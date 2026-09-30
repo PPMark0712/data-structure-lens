@@ -61,7 +61,7 @@ func perform(action: String, args: Dictionary) -> bool:
 	if kind == "hash_chain":
 		var bucket: Array = buckets[home]
 		for i in bucket.size():
-			var id := "key%d_%d" % [home, i]
+			var id := "key%d" % bucket[i]
 			record("访问桶 %d 中的键 %d" % [home, bucket[i]], [id], 1)
 			if bucket[i] == value:
 				if action == "delete":
@@ -72,7 +72,7 @@ func perform(action: String, args: Dictionary) -> bool:
 				return true
 		if action == "insert":
 			bucket.append(value)
-			record("将键 %d 加入桶 %d 的链表" % [value, home], ["key%d_%d" % [home, bucket.size() - 1]], 3)
+			record("将键 %d 加入桶 %d 的链表" % [value, home], ["key%d" % value], 3)
 		else:
 			record("键 %d 不存在" % value, [], 3)
 		return true
@@ -112,9 +112,9 @@ func view() -> Dictionary:
 			"muted" if label in ["·", "DEL"] else ""))
 		if kind == "hash_chain":
 			for j in buckets[i].size():
-				var id := "key%d_%d" % [i, j]
+				var id := "key%d" % buckets[i][j]
 				nodes.append(vertex(id, buckets[i][j], 230 + j * 95, 65 + i * 65))
-				edges.append(edge("slot%d" % i if j == 0 else "key%d_%d" % [i, j - 1], id))
+				edges.append(edge("slot%d" % i if j == 0 else "key%d" % buckets[i][j - 1], id))
 				count += 1
 		elif slots[i] is int:
 			count += 1

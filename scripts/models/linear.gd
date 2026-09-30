@@ -5,13 +5,15 @@ var items: Array[Dictionary] = []
 var capacity := 8
 var stream_index := 0
 var window := 3
+var head := 0
+var tail := 0
 
 func _init(p_kind: String = "array") -> void:
 	super(p_kind)
 	code.assign(["检查位置、容量或窗口边界", "逐个访问 / 比较元素",
 		"按规则移动元素或修改连接", "更新长度、容量及头尾指针"])
 	for value in [12, 7, 24, 16]:
-		items.append({"id": uid(), "value": value, "index": stream_index})
+		_insert_at(items.size(), {"id": uid(), "value": value, "index": stream_index})
 		stream_index += 1
 	if kind == "mono_stack" or kind == "mono_queue":
 		items.clear()
@@ -53,6 +55,8 @@ func perform(action: String, args: Dictionary) -> bool:
 			return fail("静态数组容量为 8，不能扩容。")
 		begin()
 		items.clear()
+		head = 0
+		tail = 0
 		stream_index = 0
 		capacity = 4 if kind == "dynamic_array" else 8
 		record("清空旧结构", [], 0)
@@ -61,7 +65,7 @@ func perform(action: String, args: Dictionary) -> bool:
 				_monotone(value)
 			else:
 				_grow()
-				items.append({"id": uid(), "value": value, "index": stream_index})
+				_insert_at(items.size(), {"id": uid(), "value": value, "index": stream_index})
 				stream_index += 1
 				record("插入 %d" % value, [str(items.back().id)], 2)
 		record("构建完成", [], 3)
@@ -77,6 +81,8 @@ func perform(action: String, args: Dictionary) -> bool:
 	if action in ["push", "insert"] and not kind.begins_with("mono"):
 		if items.size() >= (8 if kind == "array" else 16):
 			return fail("已达到演示容量上限。")
+	if action == "push" and kind == "mono_stack" and items.size() >= 16 and value > items.back().value:
+		return fail("单调栈已达 16 个元素；此次输入不会弹出旧元素，无法加入。")
 	begin()
 	match action:
 		"push", "insert":
@@ -89,14 +95,14 @@ func perform(action: String, args: Dictionary) -> bool:
 				_grow()
 				var item := {"id": uid(), "value": value, "index": stream_index}
 				stream_index += 1
-				items.insert(index, item)
+				_insert_at(index, item)
 				record("在位置 %d 插入 %d，更新后继位置 / 连边" % [index, value], [str(item.id)], 2)
 		"delete", "pop":
 			if action == "pop":
 				index = 0 if kind == "queue" else items.size() - 1
 			_visit_to(index)
 			record("移除 %s" % items[index].value, [str(items[index].id)], 2)
-			items.remove_at(index)
+			_remove_at(index)
 			record("连接相邻元素，更新头尾和长度", [], 3)
 		"update":
 			_visit_to(index)
@@ -116,10 +122,39 @@ func perform(action: String, args: Dictionary) -> bool:
 			record("未找到 %d" % value, [], 3)
 	return true
 
+func _by_id(id: int) -> Dictionary:
+	for item in items:
+		if item.id == id: return item
+	return {}
+
+func _insert_at(index: int, item: Dictionary) -> void:
+	if kind in ["linked", "doubly"]:
+		var previous: int = items[index - 1].id if index else 0
+		var next: int = items[index].id if index < items.size() else 0
+		item["next"] = next
+		item["prev"] = previous if kind == "doubly" else 0
+		if previous: _by_id(previous).next = item.id
+		else: head = item.id
+		if next and kind == "doubly": _by_id(next).prev = item.id
+		if not next: tail = item.id
+	items.insert(index, item)
+
+func _remove_at(index: int) -> void:
+	if kind in ["linked", "doubly"]:
+		var previous: int = items[index - 1].id if index else 0
+		var next: int = items[index].next
+		if previous: _by_id(previous).next = next
+		else: head = next
+		if next and kind == "doubly": _by_id(next).prev = previous
+		if not next: tail = previous
+	items.remove_at(index)
+
 func _visit_to(index: int) -> void:
 	if kind in ["linked", "doubly"]:
+		var id := head
 		for i in mini(index + 1, items.size()):
-			record("沿 next 指针访问第 %d 个节点" % i, [str(items[i].id)], 1)
+			record("沿 next 指针访问第 %d 个节点" % i, [str(id)], 1)
+			id = _by_id(id).next
 	elif index < items.size():
 		record("定位到位置 %d" % index, [str(items[index].id)], 1)
 
@@ -146,10 +181,6 @@ func _monotone(value: int) -> void:
 			break
 		record("末尾元素无法保持单调性，弹出", [str(items.back().id)], 2)
 		items.pop_back()
-	# Bound visual size even for an indefinitely increasing input stream.
-	if items.size() >= 16:
-		record("演示栈已满，本次输入未加入", [], 0)
-		return
 	var item := {"id": uid(), "value": value, "index": stream_index}
 	items.append(item)
 	stream_index += 1
@@ -174,10 +205,10 @@ func view() -> Dictionary:
 			if i == 0: detail += " HEAD"
 			if i == items.size() - 1: detail += " TAIL"
 		nodes.append(vertex(item.id, item.value, x, y, detail, "circle" if linked else "box"))
-		if linked and i > 0:
-			edges.append(edge(items[i - 1].id, item.id, "next"))
-			if kind == "doubly":
-				edges.append(edge(item.id, items[i - 1].id, "prev", true))
+		if linked:
+			if item.next: edges.append(edge(item.id, item.next, "next"))
+			if kind == "doubly" and item.prev:
+				edges.append(edge(item.id, item.prev, "prev", true))
 	if kind in ["array", "dynamic_array"]:
 		for i in range(items.size(), capacity):
 			nodes.append(vertex("empty%d" % i, "·", 75 + i * 78, 200, "[%d]" % i, "box", "muted"))
@@ -191,6 +222,14 @@ func view() -> Dictionary:
 func invariant() -> String:
 	if kind in ["array", "dynamic_array"] and items.size() > capacity:
 		return "size > capacity"
+	if kind in ["linked", "doubly"]:
+		if head != (items[0].id if not items.is_empty() else 0): return "list head"
+		if tail != (items[-1].id if not items.is_empty() else 0): return "list tail"
+		for i in items.size():
+			if items[i].next != (items[i + 1].id if i + 1 < items.size() else 0):
+				return "list next pointer"
+			if kind == "doubly" and items[i].prev != (items[i - 1].id if i else 0):
+				return "list prev pointer"
 	for i in range(1, items.size()):
 		if kind == "mono_stack" and items[i - 1].value >= items[i].value:
 			return "monotone stack order"

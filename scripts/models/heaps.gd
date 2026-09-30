@@ -1,0 +1,111 @@
+class_name HeapModel
+extends LabModel
+
+var items: Array = []
+var sorted_from := -1
+var result := 0
+
+func _init(p_kind: String = "binary_heap") -> void:
+	super(p_kind)
+	code.assign(["将元素加入末尾 / 建立大顶堆", "与父节点比较，上浮",
+		"交换堆顶与末尾，缩小堆", "选择更优的子节点，下沉", "堆序恢复 / 排序完成"])
+	recording = false
+	_build([12, 7, 24, 3, 16, 9])
+	recording = true
+
+func operations() -> Array:
+	var ops := [op("build", "构建", [field("values", "整数序列（最多 15 个）", "12,7,24,3,16,9", true)])]
+	if kind == "heap_sort":
+		ops.append(op("sort", "执行堆排序"))
+	else:
+		ops.append(op("insert", "插入", [field("value", "数值", "5")]))
+		ops.append(op("extract", "提取最小值"))
+	return ops
+
+func _better(a: int, b: int) -> bool:
+	return a > b if kind == "heap_sort" else a < b
+
+func _build(values: Array) -> void:
+	items.clear()
+	sorted_from = -1
+	for value in values: items.append({"id": uid(), "value": value})
+	record("按输入次序放入完全二叉树", [], 0)
+	for i in range(items.size() / 2 - 1, -1, -1): _down(i, items.size())
+
+func _swap(a: int, b: int) -> void:
+	var temp: Dictionary = items[a]
+	items[a] = items[b]
+	items[b] = temp
+	record("交换位置 %d 与 %d" % [a, b], [str(items[a].id), str(items[b].id)], 3)
+
+func _down(index: int, count: int) -> void:
+	calls.append("sift_down(%d, size=%d)" % [index, count])
+	while index * 2 + 1 < count:
+		var child := index * 2 + 1
+		if child + 1 < count and _better(items[child + 1].value, items[child].value): child += 1
+		record("比较父节点与候选子节点", [str(items[index].id), str(items[child].id)], 3)
+		if not _better(items[child].value, items[index].value): break
+		_swap(index, child)
+		index = child
+	calls.pop_back()
+
+func perform(action: String, args: Dictionary) -> bool:
+	if action == "build":
+		var values := integers(args.values, 15)
+		if not error.is_empty(): return false
+		begin()
+		_build(values)
+	elif action == "insert":
+		if items.size() >= 15: return fail("最多演示 15 个元素。")
+		begin()
+		items.append({"id": uid(), "value": int(args.value)})
+		var i := items.size() - 1
+		record("新元素放在末尾", [str(items[i].id)], 0)
+		while i > 0:
+			var parent := (i - 1) / 2
+			record("比较当前元素与父节点", [str(items[i].id), str(items[parent].id)], 1)
+			if not _better(items[i].value, items[parent].value): break
+			_swap(i, parent)
+			i = parent
+	elif action == "extract":
+		if items.is_empty(): return fail("空堆无法提取。")
+		begin()
+		result = items[0].value
+		_swap(0, items.size() - 1)
+		items.pop_back()
+		record("移除最小值 %d；末尾元素补到根" % result, [], 2)
+		_down(0, items.size())
+	else:
+		begin()
+		sorted_from = -1
+		for i in range(items.size() / 2 - 1, -1, -1): _down(i, items.size())
+		for end in range(items.size() - 1, 0, -1):
+			_swap(0, end)
+			sorted_from = end
+			record("最大值归位到 [%d]，绿色部分已排序" % end, [str(items[end].id)], 2)
+			_down(0, end)
+		sorted_from = 0
+	record("操作完成%s" % ("：升序排列" if action == "sort" else ""), [], 4)
+	return true
+
+func view() -> Dictionary:
+	var nodes: Array = []
+	var edges: Array = []
+	for i in items.size():
+		var depth := int(log(i + 1) / log(2))
+		var first := (1 << depth) - 1
+		var x := (i - first + 0.5) * 720.0 / (1 << depth)
+		var tone := "green" if sorted_from >= 0 and i >= sorted_from else ""
+		nodes.append(vertex(items[i].id, items[i].value, x, 65 + depth * 100, "[%d]" % i, "circle", tone))
+		if i > 0: edges.append(edge(items[(i - 1) / 2].id, items[i].id))
+		nodes.append(vertex("array" + str(items[i].id), items[i].value, 50 + i * 65, 480, "[%d]" % i, "box", tone))
+	return {"nodes": nodes, "edges": edges, "stats": "元素 %d · %s" % [items.size(), "大顶堆 → 升序" if kind == "heap_sort" else "最小堆"]}
+
+func invariant() -> String:
+	var count := items.size() if sorted_from < 0 else sorted_from
+	for i in range(1, count):
+		if _better(items[i].value, items[(i - 1) / 2].value): return "heap order"
+	if sorted_from >= 0:
+		for i in range(maxi(sorted_from, 1), items.size()):
+			if items[i - 1].value > items[i].value: return "sorted suffix"
+	return ""

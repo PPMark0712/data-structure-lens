@@ -34,6 +34,7 @@ var speed := 1.0
 var syncing := false
 var history: Array[Dictionary] = []
 var undo_button: Button
+var pick_second := false
 
 func _ready() -> void:
 	_build_theme()
@@ -254,6 +255,7 @@ func _choose_operation(index: int) -> void:
 	_clear(fields_box)
 	editors.clear()
 	selected_op = model.operations()[index]
+	pick_second = false
 	for spec in selected_op.fields:
 		fields_box.add_child(_label(spec.title, 14))
 		var editor := LineEdit.new()
@@ -301,6 +303,7 @@ func _execute() -> void:
 	status.text = "操作已生成 %d 步，可暂停或拖动进度。" % trace.size()
 	status.remove_theme_color_override("font_color")
 	_show_frame(0, false)
+	canvas.fit_frames(trace)
 	playing = trace.size() > 1
 	elapsed = 0
 	_update_controls()
@@ -345,9 +348,10 @@ func _process(delta: float) -> void:
 
 func _toggle_play() -> void:
 	if trace.size() < 2: return
-	if cursor == trace.size() - 1:
+	if not playing and cursor == trace.size() - 1 and canvas.progress >= 1.0:
 		_show_frame(0, false)
 	playing = not playing
+	canvas.pause_animation(not playing)
 	elapsed = 0
 	_update_controls()
 
@@ -389,12 +393,50 @@ func _update_controls() -> void:
 func _pick_node(id: String) -> void:
 	for node in canvas.current.get("nodes", []):
 		if str(node.id) != id: continue
-		if editors.has("index"):
-			var detail: String = node.get("detail", "")
-			if detail.begins_with("["):
-				editors.index.text = detail.get_slice("]", 0).trim_prefix("[")
-		if editors.has("node") and id.is_valid_int(): editors.node.text = id
-		if editors.has("value") and str(node.label).is_valid_int():
-			editors.value.text = str(node.label)
-		status.text = "已选择：%s  %s" % [node.label, node.get("detail", "")]
+		var fill := {}
+		var detail: String = node.get("detail", "")
+		var index := -1
+		if detail.begins_with("[") and detail.get_slice("]", 0).trim_prefix("[").is_valid_int():
+			index = int(detail.get_slice("]", 0).trim_prefix("["))
+		if model.kind == "fenwick":
+			index = int(id.substr(1)) + (1 if id.begins_with("a") else 0)
+		if model.kind == "sparse_table": index = int(id.get_slice("_", 1))
+		if index >= 0:
+			fill["index"] = index
+			if editors.has("l"):
+				fill["r" if pick_second else "l"] = index
+				pick_second = not pick_second
+		if model.kind in ["segment", "dynamic_segment", "persistent_segment"] and id.is_valid_int():
+			var part: Dictionary = model.pool[int(id)]
+			fill["l"] = part.l
+			fill["r"] = part.r
+			fill["index"] = part.l
+		if model.kind in ["fenwick2", "segment2"] and id.begins_with("a"):
+			var x := int(id.substr(1).get_slice("_", 0))
+			var y := int(id.get_slice("_", 1))
+			fill["x"] = x
+			fill["y"] = y
+			if editors.has("x1"):
+				fill["x2" if pick_second else "x1"] = x
+				fill["y2" if pick_second else "y1"] = y
+				pick_second = not pick_second
+		if model.kind == "segment2" and id.begins_with("x"): fill["node"] = int(id.substr(1))
+		if id.is_valid_int(): fill["id"] = int(id)
+		if model.kind == "lct":
+			fill["id"] = int(id.substr(1))
+			if editors.has("u"):
+				fill["v" if pick_second else "u"] = int(id.substr(1))
+				pick_second = not pick_second
+		# Numeric labels are keys only in these structures, not interval aggregates.
+		if model.kind in ["array", "dynamic_array", "linked", "doubly", "stack", "queue",
+				"mono_stack", "mono_queue", "hash_linear", "hash_quadratic", "hash_chain",
+				"binary_heap", "heap_sort", "binomial", "fibonacci", "avl", "treap", "splay", "red_black"]:
+			if str(node.label).is_valid_int(): fill["value"] = int(node.label)
+		var assigned: Array[String] = []
+		for key in fill:
+			if editors.has(key):
+				editors[key].text = str(fill[key])
+				assigned.append("%s=%s" % [key, fill[key]])
+		status.remove_theme_color_override("font_color")
+		status.text = "已填入：" + "，".join(assigned) if not assigned.is_empty() else "已选择：%s  %s" % [node.label, detail]
 		return

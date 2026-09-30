@@ -63,6 +63,7 @@ func edge(a: Variant, b: Variant, label: String = "", dashed: bool = false) -> D
 	return {"from": str(a), "to": str(b), "label": label, "dashed": dashed}
 
 func integers(text: String, limit: int = 16) -> Array:
+	error = ""
 	var result: Array = []
 	var normalized := text.replace("，", ",").replace(" ", ",")
 	for part in normalized.split(",", false):

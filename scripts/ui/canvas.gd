@@ -39,8 +39,17 @@ func _set_progress(value: float) -> void:
 	progress = value
 	queue_redraw()
 
+func pause_animation(paused: bool) -> void:
+	if active_tween and active_tween.is_valid():
+		if paused: active_tween.pause()
+		else: active_tween.play()
+
 func fit() -> void:
-	var nodes: Array = current.get("nodes", [])
+	fit_frames([current])
+
+func fit_frames(frames: Array) -> void:
+	var nodes: Array = []
+	for frame in frames: nodes.append_array(frame.get("nodes", []))
 	if nodes.is_empty():
 		zoom = 1.0
 		offset = Vector2(25, 25)
@@ -133,8 +142,9 @@ func _draw_edge(e: Dictionary, positions: Dictionary, alpha: float) -> void:
 		draw_dashed_line(a, b, color, 1.5, 7)
 	else:
 		draw_line(a, b, color, 1.7, true)
-	draw_colored_polygon(PackedVector2Array([b, b - direction * 9 + perpendicular * 4,
-		b - direction * 9 - perpendicular * 4]), color)
+	if e.get("directed", true):
+		draw_colored_polygon(PackedVector2Array([b, b - direction * 9 + perpendicular * 4,
+			b - direction * 9 - perpendicular * 4]), color)
 	if not str(e.get("label", "")).is_empty():
 		draw_string(font, (a + b) / 2 + perpendicular * 14, str(e.label),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
@@ -146,13 +156,18 @@ func _draw_vertex(node: Dictionary, position: Vector2, alpha: float, active: boo
 	var ink := INK
 	match node.get("tone", ""):
 		"red": fill = Color("#f3b8a8")
+		"blue": fill = BLUE
 		"green": fill = Color("#d1e8bf")
 		"muted": ink = Color("#999485")
 		"black": fill = INK; ink = PAPER
-	if active: fill = BLUE; ink = INK
+	if active and node.get("tone", "") not in ["red", "black"]:
+		fill = BLUE
+		ink = INK
 	fill.a = alpha
 	ink.a = alpha
 	var outline := Color(INK, alpha)
+	if active and node.get("tone", "") in ["red", "black"]:
+		draw_arc(position, 32, 0, TAU, 48, Color("#268bd2", alpha), 3, true)
 	if node.get("shape", "circle") == "box":
 		var rect := Rect2(position - Vector2(29, 24), Vector2(58, 48))
 		draw_rect(rect, fill)
