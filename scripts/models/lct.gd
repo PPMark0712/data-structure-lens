@@ -169,7 +169,8 @@ func perform(action: String, args: Dictionary) -> bool:
 			record("更新权值并维护辅助树聚合", ["a%d" % u], 5)
 		"access": _access(u)
 		"makeroot": _make_root(u)
-	record("操作完成 · 实线=辅助树孩子，虚线=路径父亲", [], 5)
+	if action != "query":
+		record("操作完成 · 实线=辅助树孩子，虚线=路径父亲", [], 5)
 	return true
 
 func _layout(id: int, depth: int, column: Array, nodes: Array, edges: Array) -> void:

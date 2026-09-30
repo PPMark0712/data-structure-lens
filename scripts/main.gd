@@ -53,13 +53,17 @@ func _build_theme() -> void:
 	skin.default_font_size = 17
 	if ResourceLoader.exists("res://assets/NotoSansSC.ttf"):
 		skin.default_font = load("res://assets/NotoSansSC.ttf")
-	for type in ["Label", "Button", "LineEdit", "OptionButton", "CheckButton", "RichTextLabel"]:
+	for type in ["Label", "Button", "LineEdit", "OptionButton", "CheckButton", "RichTextLabel", "PopupMenu"]:
 		skin.set_color("font_color", type, INK)
 		skin.set_color("font_hover_color", type, INK)
 		skin.set_color("font_pressed_color", type, INK)
+		skin.set_color("font_hover_pressed_color", type, INK)
 		skin.set_color("font_focus_color", type, INK)
 		skin.set_color("font_disabled_color", type, Color("#8b887f"))
 	skin.set_color("default_color", "RichTextLabel", INK)
+	skin.set_color("font_placeholder_color", "LineEdit", Color("#777367"))
+	skin.set_color("caret_color", "LineEdit", INK)
+	skin.set_color("selection_color", "LineEdit", Color("#bce1ef"))
 	for type in ["Button", "OptionButton", "LineEdit"]:
 		for state in ["normal", "hover", "pressed", "focus", "disabled", "read_only"]:
 			var box := StyleBoxFlat.new()
@@ -72,6 +76,17 @@ func _build_theme() -> void:
 			box.content_margin_top = 9
 			box.content_margin_bottom = 9
 			skin.set_stylebox(state, type, box)
+	var popup := StyleBoxFlat.new()
+	popup.bg_color = BG
+	popup.border_color = INK
+	popup.set_border_width_all(1)
+	popup.set_corner_radius_all(4)
+	for side in ["left", "right", "top", "bottom"]:
+		popup.set("content_margin_" + side, 8)
+	skin.set_stylebox("panel", "PopupMenu", popup)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color("#cce4eb")
+	skin.set_stylebox("hover", "PopupMenu", hover)
 	theme = skin
 
 func _build_ui() -> void:
@@ -138,12 +153,12 @@ func _build_ui() -> void:
 	center.add_child(timeline)
 	var controls := HBoxContainer.new()
 	center.add_child(controls)
-	controls.add_child(_button("⏮", func(): _go(0)))
+	controls.add_child(_button("首步", func(): _go(0)))
 	controls.add_child(_button("上一步", func(): _go(cursor - 1)))
 	play_button = _button("播放", _toggle_play)
 	controls.add_child(play_button)
 	controls.add_child(_button("下一步", func(): _go(cursor + 1)))
-	controls.add_child(_button("⏭", func(): _go(trace.size() - 1)))
+	controls.add_child(_button("末步", func(): _go(trace.size() - 1)))
 	counter = _label("", 14)
 	counter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	controls.add_child(counter)
@@ -267,7 +282,7 @@ func _choose_operation(index: int) -> void:
 
 func _execute() -> void:
 	if playing or cursor < trace.size() - 1:
-		_error("请先播放到末尾或点击 ⏭，再执行新操作。")
+		_error("请先播放到末尾或点击「末步」，再执行新操作。")
 		return
 	var args := {}
 	for spec in selected_op.fields:
