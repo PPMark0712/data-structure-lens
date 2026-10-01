@@ -9,6 +9,7 @@ const PAPER := Color("#fdf6e3")
 var current: Dictionary = {"nodes": [], "edges": []}
 var previous: Dictionary = {"nodes": [], "edges": []}
 var progress := 1.0
+var animation_speed := 1.0
 var zoom := 1.0
 var offset := Vector2(25, 25)
 var active_tween: Tween
@@ -33,6 +34,7 @@ func display(frame: Dictionary, animate: bool = true, duration: float = 0.5) -> 
 	if animate:
 		active_tween = create_tween()
 		active_tween.tween_method(_set_progress, 0.0, 1.0, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+		active_tween.set_speed_scale(animation_speed)
 	queue_redraw()
 
 func _set_progress(value: float) -> void:
@@ -44,24 +46,65 @@ func pause_animation(paused: bool) -> void:
 		if paused: active_tween.pause()
 		else: active_tween.play()
 
+func set_animation_speed(value: float) -> void:
+	animation_speed = value
+	if active_tween and active_tween.is_valid():
+		active_tween.set_speed_scale(animation_speed)
+
+func _interpolated_positions() -> Dictionary:
+	var old := {}
+	var positions := {}
+	for node in previous.get("nodes", []):
+		old[str(node.id)] = node
+	for node in current.get("nodes", []):
+		var id := str(node.id)
+		var start: Vector2 = old[id].pos if old.has(id) else node.pos
+		positions[id] = start.lerp(node.pos, progress)
+	for id in old:
+		if not positions.has(id):
+			positions[id] = old[id].pos
+	return positions
+
 func fit() -> void:
 	fit_frames([current])
 
 func fit_frames(frames: Array) -> void:
 	var nodes: Array = []
 	for frame in frames: nodes.append_array(frame.get("nodes", []))
-	if nodes.is_empty():
+	var bounds := Rect2()
+	var has_bounds := false
+	for node in nodes:
+		var half: Vector2 = node.get("size", Vector2(90, 60)) / 2
+		var top_left: Vector2 = node.pos - half - Vector2(20, 20)
+		var bottom_right: Vector2 = node.pos + half + Vector2(20, 32)
+		if not has_bounds:
+			bounds = Rect2(top_left, Vector2.ZERO)
+			has_bounds = true
+		bounds = bounds.expand(top_left).expand(bottom_right)
+		var detail := str(node.get("detail", ""))
+		if not detail.is_empty():
+			var detail_offset: Vector2 = node.get("detail_offset", Vector2(0, 46))
+			var detail_width := font.get_string_size(detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			var baseline: Vector2 = node.pos + detail_offset
+			bounds = bounds.expand(baseline + Vector2(-detail_width / 2, -14))
+			bounds = bounds.expand(baseline + Vector2(detail_width / 2, 4))
+	for frame in frames:
+		for outline in frame.get("outlines", []):
+			for point: Vector2 in outline.get("points", []):
+				if not has_bounds:
+					bounds = Rect2(point, Vector2.ZERO)
+					has_bounds = true
+				bounds = bounds.expand(point - Vector2(4, 4)).expand(point + Vector2(4, 4))
+		for annotation in frame.get("annotations", []):
+			if not has_bounds:
+				bounds = Rect2(annotation.pos, Vector2.ZERO)
+				has_bounds = true
+			bounds = bounds.expand(annotation.pos - Vector2(0, 20))
+			bounds = bounds.expand(annotation.pos + Vector2(font.get_string_size(annotation.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x, 4))
+	if not has_bounds:
 		zoom = 1.0
 		offset = Vector2(25, 25)
 		return
-	var bounds := Rect2(nodes[0].pos, Vector2.ZERO)
-	for node in nodes:
-		var half: Vector2 = node.get("size", Vector2(90, 60)) / 2
-		bounds = bounds.expand(node.pos - half - Vector2(20, 20)).expand(node.pos + half + Vector2(20, 32))
-	for frame in frames:
-		for annotation in frame.get("annotations", []):
-			bounds = bounds.expand(annotation.pos - Vector2(0, 20))
-			bounds = bounds.expand(annotation.pos + Vector2(font.get_string_size(annotation.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x, 4))
 	zoom = clampf(minf((size.x - 60) / bounds.size.x, (size.y - 60) / bounds.size.y), 0.18, 1.4)
 	offset = (size - bounds.size * zoom) / 2 - bounds.position * zoom
 	queue_redraw()
@@ -90,9 +133,11 @@ func _gui_input(event: InputEvent) -> void:
 			else:
 				if dragging and not moved:
 					var point: Vector2 = (event.position - offset) / zoom
+					var positions := _interpolated_positions()
 					for node in current.get("nodes", []):
 						var node_size: Vector2 = node.get("size", Vector2(68, 68))
-						if Rect2(node.pos - node_size / 2, node_size).has_point(point):
+						var position: Vector2 = positions[str(node.id)]
+						if Rect2(position - node_size / 2, node_size).has_point(point):
 							picked.emit(str(node.id))
 							break
 				dragging = false
@@ -111,13 +156,10 @@ func _draw() -> void:
 	var new := {}
 	for node in previous.get("nodes", []): old[str(node.id)] = node
 	for node in current.get("nodes", []): new[str(node.id)] = node
-	var positions := {}
-	for id in new:
-		var start: Vector2 = old[id].pos if old.has(id) else new[id].pos
-		positions[id] = start.lerp(new[id].pos, progress)
-	for id in old:
-		if not new.has(id): positions[id] = old[id].pos
+	var positions := _interpolated_positions()
 	draw_set_transform(offset, 0, Vector2.ONE * zoom)
+	for outline in current.get("outlines", []):
+		_draw_outline(outline)
 	# Old edges fade out; new edges attach to interpolated node positions.
 	for e in previous.get("edges", []):
 		_draw_edge(e, positions, 1 - progress)
@@ -134,6 +176,12 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 	if new.is_empty():
 		draw_string(font, Vector2(36, 65), "结构为空 · 使用操作面板加入元素", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
+
+func _draw_outline(outline: Dictionary) -> void:
+	var points := PackedVector2Array(outline.get("points", []))
+	if points.size() < 2:
+		return
+	draw_polyline(points, outline.get("color", INK), outline.get("width", 2.5), true)
 
 func _draw_edge(e: Dictionary, positions: Dictionary, alpha: float) -> void:
 	if alpha <= 0.001 or not positions.has(str(e.from)) or not positions.has(str(e.to)):
@@ -194,5 +242,6 @@ func _draw_vertex(node: Dictionary, position: Vector2, alpha: float, active: boo
 			HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, ink)
 	var detail := str(node.get("detail", ""))
 	var width := font.get_string_size(detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-	draw_string(font, position + Vector2(-width / 2, 46), detail,
+	var detail_offset: Vector2 = node.get("detail_offset", Vector2(0, 46))
+	draw_string(font, position + detail_offset - Vector2(width / 2, 0), detail,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(INK, alpha))

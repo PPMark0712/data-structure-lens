@@ -16,7 +16,7 @@ const ENTRIES := [
 	["区间结构", "fenwick", "一维树状数组", "lowbit 跳转，单点加与前缀和", "ranges"],
 	["区间结构", "fenwick2", "二维树状数组", "双层 lowbit 跳转与矩形求和", "ranges"],
 	["区间结构", "sparse_table", "ST 表", "幂次区间预处理，静态区间最小值", "ranges"],
-	["区间结构", "segment", "Lazy 线段树", "矩形覆盖原数组，保留访问路径与区间拆分", "segment"],
+	["区间结构", "segment", "线段树", "矩形覆盖原数组，保留访问路径与区间拆分", "segment"],
 	["区间结构", "dynamic_segment", "动态开点线段树", "按需创建节点，单点加与区间和", "segment"],
 	["区间结构", "segment2", "二维线段树", "外层行树、内层列树与矩形求和", "segment2"],
 	["区间结构", "persistent_segment", "可持久化线段树", "路径复制、版本根与共享子树", "segment"],

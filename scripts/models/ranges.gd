@@ -1,6 +1,10 @@
 class_name RangeModel
 extends LabModel
 
+const ST_SIZE := 16
+const ST_VALUES := [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9, 7, 9, 3]
+const ST_CELL_WIDTH := 70.0
+
 var data: Array = [3, 1, 4, 1, 5, 9, 2, 6]
 var bit: Array = []
 var grid: Array = []
@@ -10,6 +14,8 @@ var result := 0
 
 func _init(p_kind: String = "fenwick") -> void:
 	super(p_kind)
+	if kind == "sparse_table":
+		data = ST_VALUES.duplicate()
 	code.assign(["定位起始下标 / 幂次层", "读取或修改当前覆盖区间",
 		"i += lowbit(i) 更新；i -= lowbit(i) 查询", "聚合已访问节点，返回结果"])
 	recording = false
@@ -23,8 +29,9 @@ func operations() -> Array:
 			op("query", "矩形求和", [field("x1", "起始行", "1"), field("y1", "起始列", "1"),
 				field("x2", "结束行", "3"), field("y2", "结束列", "4")])]
 	if kind == "sparse_table":
-		return [op("query", "区间最小值", [field("l", "左端点（1 起）", "1"), field("r", "右端点（含）", "6")]),
-			op("build", "重新预处理", [field("values", "8 个整数", "3,1,4,1,5,9,2,6", true)])]
+		return [op("query", "区间最小值", [field("l", "左端点（1 起）", "1"), field("r", "右端点（含）", "12")]),
+			op("build", "重新预处理", [field("values", "16 个整数",
+				"3,1,4,1,5,9,2,6,5,3,5,8,9,7,9,3", true)])]
 	return [op("add", "单点增加", [field("index", "下标（1–8）", "3"), field("value", "增量", "5")]),
 		op("query", "区间求和", [field("l", "左端点（1 起）", "2"), field("r", "右端点（含）", "6")]),
 		op("build", "重新构建", [field("values", "8 个整数", "3,1,4,1,5,9,2,6", true)])]
@@ -48,15 +55,15 @@ func _rebuild() -> void:
 		code.assign(["st[i][0] = a[i]", "st[i][k] = min(st[i][k-1], st[i+2^(k-1)][k-1])",
 			"k = floor(log2(r-l+1))", "min(st[l][k], st[r-2^k+1][k])"])
 		table.clear()
-		for k in 4:
+		for k in 5:
 			var row: Array = []
-			row.resize(8)
+			row.resize(ST_SIZE)
 			table.append(row)
-		for i in 8:
+		for i in ST_SIZE:
 			table[0][i] = data[i]
 		record("初始化长度为 1 的区间", [], 0)
-		for k in range(1, 4):
-			for i in range(9 - (1 << k)):
+		for k in range(1, table.size()):
+			for i in range(ST_SIZE - (1 << k) + 1):
 				table[k][i] = mini(table[k - 1][i], table[k - 1][i + (1 << (k - 1))])
 				record("合并两个长度 %d 的区间，得到 [%d,%d]" % [1 << (k - 1), i + 1, i + (1 << k)],
 					["s%d_%d" % [k, i], "s%d_%d" % [k - 1, i], "s%d_%d" % [k - 1, i + (1 << (k - 1))]], 1)
@@ -69,9 +76,10 @@ func _rebuild() -> void:
 func perform(action: String, args: Dictionary) -> bool:
 	if action == "build":
 		error = ""
-		var values := integers(str(args.values), 8)
+		var expected_size := ST_SIZE if kind == "sparse_table" else 8
+		var values := integers(str(args.values), expected_size)
 		if not error.is_empty(): return false
-		if values.size() != 8: return fail("请输入恰好 8 个整数。")
+		if values.size() != expected_size: return fail("请输入恰好 %d 个整数。" % expected_size)
 		begin()
 		data = values
 		_rebuild()
@@ -108,8 +116,9 @@ func perform(action: String, args: Dictionary) -> bool:
 	else:
 		var l := int(args.l)
 		var r := int(args.r)
-		if l < 1 or r > 8 or l > r:
-			return fail("区间必须满足 1 ≤ l ≤ r ≤ 8。")
+		var upper := ST_SIZE if kind == "sparse_table" else 8
+		if l < 1 or r > upper or l > r:
+			return fail("区间必须满足 1 ≤ l ≤ r ≤ %d。" % upper)
 		begin()
 		if kind == "sparse_table":
 			l -= 1
@@ -185,16 +194,16 @@ func view() -> Dictionary:
 		for k in table.size():
 			var length := 1 << k
 			annotations.append({"pos": Vector2(40, y - 28), "text": "第 %d 层 · 长度 %d" % [k, length]})
-			for i in 8:
+			for i in ST_SIZE:
 				if table[k][i] != null:
 					var label := "%s" % table[k][i] if k == 0 else "[%d,%d]  min=%s" % [i + 1, i + length, table[k][i]]
 					var bar := vertex("s%d_%d" % [k, i], label,
-						40 + (i + length / 2.0) * 90, y + (i % length) * 35,
+						40 + (i + length / 2.0) * ST_CELL_WIDTH, y + (i % length) * 35,
 						"[%d]" % [i + 1] if k == 0 else "", "box", "green" if k % 2 else "")
-					bar["size"] = Vector2(length * 90, 29)
+					bar["size"] = Vector2(length * ST_CELL_WIDTH, 29)
 					bar["range"] = [i + 1, i + length]
 					nodes.append(bar)
-			y += mini(length, 9 - length) * 35 + (65 if k == 0 else 48)
+			y += mini(length, ST_SIZE - length + 1) * 35 + (65 if k == 0 else 48)
 	else:
 		for i in 8:
 			nodes.append(vertex("a%d" % i, data[i], 60 + i * 95, 90, "a[%d]" % [i + 1], "box"))
@@ -208,7 +217,8 @@ func view() -> Dictionary:
 			if parent <= 8: edges.append(edge("b%d" % i, "b%d" % parent, "lowbit"))
 	return {"nodes": nodes, "edges": edges, "annotations": annotations, "stats":
 		"4×4  ·  左：原始矩阵  /  右：树状数组" if kind == "fenwick2" else
-		("n=8  ·  静态 RMQ  ·  每层长度 2^k" if kind == "sparse_table" else "n=8  ·  1-based  ·  lowbit(i) = i & −i")}
+		("n=16  ·  静态 RMQ  ·  每层长度 2^k" if kind == "sparse_table" else
+		"n=8  ·  1-based  ·  lowbit(i) = i & −i")}
 
 func invariant() -> String:
 	if kind == "fenwick":
@@ -225,7 +235,7 @@ func invariant() -> String:
 				if bit2[i][j] != expected: return "2D Fenwick coverage mismatch"
 	if kind == "sparse_table":
 		for k in table.size():
-			for i in range(9 - (1 << k)):
+			for i in range(ST_SIZE - (1 << k) + 1):
 				var expected: int = data[i]
 				for j in range(i, i + (1 << k)): expected = mini(expected, data[j])
 				if table[k][i] != expected: return "ST interval minimum mismatch"

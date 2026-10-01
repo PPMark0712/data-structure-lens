@@ -88,15 +88,45 @@ func perform(action: String, args: Dictionary) -> bool:
 			var item := {"id": uid(), "value": value, "index": stream_index}
 			stream_index += 1
 			_insert_at(index, item)
-			visual_slots.clear()
-			record("在位置 %d 插入 %d，更新长度及头尾指针" % [index + 1, value], [str(item.id)], 3)
+			if kind == "stack":
+				visual_slots[item.id] = index + 1
+				record("将 %d 从栈口放入" % value, [str(item.id)], 2)
+				visual_slots[item.id] = index
+				record("%d 落到栈顶，更新 TOP 和长度" % value, [str(item.id)], 3)
+				visual_slots.clear()
+			else:
+				visual_slots.clear()
+				record("在位置 %d 插入 %d，更新长度及头尾指针" % [index + 1, value], [str(item.id)], 3)
 		"delete", "pop":
 			if action == "pop":
 				index = 0 if kind == "queue" else items.size() - 1
 			_visit_to(index)
-			record("移除 %s" % items[index].value, [str(items[index].id)], 2)
-			_remove_at(index)
-			record("连接相邻元素，更新头尾和长度", [], 3)
+			var removed: Dictionary = items[index]
+			if kind in ["array", "dynamic_array"]:
+				_remove_at(index)
+				for i in range(index, items.size()):
+					visual_slots[items[i].id] = i + 1
+				record("移除位置 %d 的 %s，留下一个空位" % [index + 1, removed.value], [], 2)
+				for i in range(index, items.size()):
+					visual_slots[items[i].id] = i
+					record("将 %s 从位置 %d 左移到 %d，填补空位" %
+						[items[i].value, i + 2, i + 1], [str(items[i].id)], 2)
+				visual_slots.clear()
+				record("左移完成，更新数组长度", [], 3)
+			else:
+				if kind == "stack":
+					visual_slots[removed.id] = index + 1
+					record("将栈顶 %s 从栈口取出" % removed.value, [str(removed.id)], 2)
+					_remove_at(index)
+					visual_slots.clear()
+					record("更新 TOP 和长度", [], 3)
+				else:
+					record("移除 %s" % removed.value, [str(removed.id)], 2)
+					_remove_at(index)
+				if kind in ["linked", "doubly"]:
+					record("重接前驱与后继，更新头尾和长度", [], 3)
+				elif kind == "queue":
+					record("更新 HEAD 和长度", [], 3)
 		"update":
 			_visit_to(index)
 			items[index].value = value
@@ -208,6 +238,7 @@ func view() -> Dictionary:
 		return _migration_view()
 	var nodes: Array = []
 	var edges: Array = []
+	var outlines: Array = []
 	var linked := kind in ["linked", "doubly"]
 	var stack := kind == "stack"
 	var occupied := {}
@@ -216,18 +247,27 @@ func view() -> Dictionary:
 		var slot: int = visual_slots.get(item.id, i)
 		occupied[slot] = true
 		var x := 150.0 if stack else 75.0 + slot * (110.0 if linked else 78.0)
-		var y := 660.0 - i * 68.0 if stack else 200.0
-		var detail := "[%d]" % [slot + 1]
+		var y := 660.0 - slot * 68.0 if stack else 200.0
+		var detail := "[%d]" % [(i if stack else slot) + 1]
 		if stack and i == items.size() - 1:
 			detail += " TOP"
 		if kind in ["queue", "linked", "doubly"]:
 			if i == 0: detail += " HEAD"
 			if i == items.size() - 1: detail += " TAIL"
-		nodes.append(vertex(item.id, item.value, x, y, detail, "circle" if linked else "box"))
+		var node := vertex(item.id, item.value, x, y, detail, "circle" if linked else "box")
+		if stack:
+			node["detail_offset"] = Vector2(76, 5)
+		nodes.append(node)
 		if linked:
 			if item.next: edges.append(edge(item.id, item.next, "next"))
 			if kind == "doubly" and item.prev:
 				edges.append(edge(item.id, item.prev, "prev", true))
+	if stack:
+		var opening_y := 592.0 if items.is_empty() else 660.0 - (items.size() - 1) * 68.0 - 48.0
+		outlines.append({"points": [
+			Vector2(110, opening_y), Vector2(110, 698),
+			Vector2(190, 698), Vector2(190, opening_y)
+		], "width": 3.0})
 	if kind in ["array", "dynamic_array"]:
 		for i in capacity:
 			if not occupied.has(i):
@@ -235,7 +275,7 @@ func view() -> Dictionary:
 	var stats := "长度 %d" % items.size()
 	if kind in ["array", "dynamic_array"]:
 		stats += "  /  容量 %d" % capacity
-	return {"nodes": nodes, "edges": edges, "stats": stats}
+	return {"nodes": nodes, "edges": edges, "outlines": outlines, "stats": stats}
 
 func invariant() -> String:
 	if kind in ["array", "dynamic_array"] and items.size() > capacity:

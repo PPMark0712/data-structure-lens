@@ -15,7 +15,10 @@ func check(condition: bool, message: String) -> void:
 func _run() -> void:
 	var count := 0
 	for entry in LabCatalog.ENTRIES:
-		if not ResourceLoader.exists("res://scripts/models/%s.gd" % entry[4]): continue
+		var path := "res://scripts/models/%s.gd" % entry[4]
+		if not ResourceLoader.exists(path):
+			check(false, "%s model script exists: %s" % [entry[1], path])
+			continue
 		count += 1
 		var model := LabCatalog.create(entry)
 		check(model != null, entry[1] + " creates")
@@ -32,6 +35,11 @@ func _run() -> void:
 			check(not fresh.frames.is_empty(), "%s.%s emits frames" % [entry[1], operation.id])
 			for frame in fresh.frames:
 				check_frame(frame, entry[1] + "." + operation.id)
+	check(count == LabCatalog.ENTRIES.size(), "every catalog entry is covered")
+	var parser := LabModel.new()
+	check(parser.integers("-9223372036854775808").is_empty() and not parser.error.is_empty(),
+		"minimum int64 cannot bypass sequence limits")
+	_frame_references()
 	_random_linear()
 	_random_hash()
 	_random_ranges()
@@ -47,6 +55,20 @@ func check_frame(frame: Dictionary, label: String) -> void:
 		check(node.pos is Vector2 and node.pos.is_finite(), label + " finite coordinates")
 	for edge in frame.edges:
 		check(ids.has(str(edge.from)) and ids.has(str(edge.to)), label + " edge endpoints exist")
+	for active in frame.get("active", []):
+		check(ids.has(str(active)), label + " active node exists")
+
+func _frame_references() -> void:
+	var tree := BalancedModel.new("avl")
+	check(tree.perform("find", {"value": 999}), "missing balanced-tree lookup")
+	for frame in tree.frames: check_frame(frame, "avl.missing")
+	var trie := TrieModel.new("trie")
+	check(trie.perform("find", {"value": "zzz"}), "missing Trie lookup")
+	for frame in trie.frames: check_frame(frame, "trie.missing")
+	var red_black := RedBlackModel.new()
+	check(red_black.perform("build", {"values": "1"}), "singleton red-black build")
+	check(red_black.perform("delete", {"value": 1}), "singleton red-black deletion")
+	for frame in red_black.frames: check_frame(frame, "red_black.singleton_delete")
 
 func _random_linear() -> void:
 	var rng := RandomNumberGenerator.new()

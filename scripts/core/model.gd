@@ -73,7 +73,7 @@ func integers(text: String, limit: int = 16) -> Array:
 			fail("请输入以逗号或空格分隔的整数。")
 			return []
 		var value := int(part)
-		if absi(value) > 999:
+		if value < -999 or value > 999:
 			fail("演示数值范围为 -999 到 999。")
 			return []
 		result.append(value)

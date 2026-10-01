@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fetch_web_templates import VERSION
+from fetch_web_templates import VERSION, template_ready
 
 
 def engine():
@@ -70,10 +70,12 @@ def main():
         run_godot(executable, log="desktop")
         return
     if args.command == "test":
+        subprocess.run([sys.executable, "-m", "unittest", "tests.test_tools"], cwd=ROOT, check=True)
         for name in ["models", "advanced", "teaching", "interactions"]:
             run_godot(executable, "--headless", "--script", f"tests/test_{name}.gd", log=name)
     elif args.command == "export":
-        if not (ROOT / ".tools" / "templates" / "web_nothreads_release.zip").exists():
+        template = ROOT / ".tools" / "templates" / "web_nothreads_release.zip"
+        if not template_ready(template):
             subprocess.run([sys.executable, str(ROOT / "tools" / "fetch_web_templates.py")], check=True)
         destination = ROOT / "build" / "web"
         destination.mkdir(parents=True, exist_ok=True)

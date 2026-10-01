@@ -151,7 +151,10 @@ func perform(action: String, args: Dictionary) -> bool:
 		"find", "prefix":
 			var id := _walk(letters)
 			result = pool[id]["end" if action == "find" else "count"] if id else 0
-			record("%s '%s' 的计数 = %d" % ["单词" if action == "find" else "前缀", value, result], [str(id)], 2)
+			var active: Array = [str(id)] if id else []
+			record("%s '%s' 的计数 = %d" %
+				["单词" if action == "find" else "前缀", value, result],
+				active, 2)
 		"xor":
 			var id := root
 			matched = 0

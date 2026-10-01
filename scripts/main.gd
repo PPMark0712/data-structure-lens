@@ -167,7 +167,7 @@ func _build_ui() -> void:
 	for text in ["0.5×", "1×", "2×", "4×"]:
 		speed_picker.add_item(text)
 	speed_picker.selected = 1
-	speed_picker.item_selected.connect(func(i): speed = [0.5, 1.0, 2.0, 4.0][i])
+	speed_picker.item_selected.connect(_set_speed)
 	controls.add_child(speed_picker)
 	var right_scroll := ScrollContainer.new()
 	right_scroll.custom_minimum_size.x = 315
@@ -304,10 +304,11 @@ func _execute() -> void:
 			if not text.is_valid_int():
 				_error("%s 必须是整数。" % spec.title)
 				return
-			if absi(int(text)) > 9999:
+			var value := int(text)
+			if value < -9999 or value > 9999:
 				_error("演示参数绝对值不能超过 9999。")
 				return
-			args[spec.key] = int(text)
+			args[spec.key] = value
 		else:
 			args[spec.key] = text
 	# Capture a value-only copy for transactional failure and undo.
@@ -358,10 +359,15 @@ func _undo() -> void:
 	trace = model.frames.duplicate(true)
 	_show_frame(0, false)
 	status.text = "已恢复上一次操作前的数据。"
+	status.remove_theme_color_override("font_color")
 
 func _error(message: String) -> void:
 	status.text = message
 	status.add_theme_color_override("font_color", Color("#ad3c26"))
+
+func _set_speed(index: int) -> void:
+	speed = [0.5, 1.0, 2.0, 4.0][index]
+	canvas.set_animation_speed(speed)
 
 func _process(delta: float) -> void:
 	if not playing: return
@@ -395,7 +401,7 @@ func _seek(value: float) -> void:
 func _show_frame(index: int, animate: bool) -> void:
 	cursor = index
 	var frame := trace[cursor]
-	canvas.display(frame, animate, 0.5 / speed)
+	canvas.display(frame, animate, 0.5)
 	stats.text = frame.get("stats", "")
 	explanation.text = frame.get("message", "")
 	var lines := ""

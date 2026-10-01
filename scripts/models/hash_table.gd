@@ -7,7 +7,7 @@ var buckets: Array = []
 
 func _init(p_kind: String = "hash_linear") -> void:
 	super(p_kind)
-	code.assign(["h = ((key % 11) + 11) % 11 + 1", "探测槽 = (h−1+偏移) mod 11 + 1",
+	code.assign(["h = ((key % 11) + 11) % 11", "探测槽 = (h+偏移) mod 11",
 		"遇冲突继续；删除标记不能终止查找", "找到键或可用位置，返回结果"])
 	slots.resize(SIZE)
 	for i in SIZE:
@@ -57,12 +57,12 @@ func perform(action: String, args: Dictionary) -> bool:
 		record("清空所有槽位与删除标记", [], 3)
 		return true
 	var home := _hash(value)
-	record("h(%d) = %d" % [value, home + 1], ["slot%d" % home], 0)
+	record("h(%d) = %d" % [value, home], ["slot%d" % home], 0)
 	if kind == "hash_chain":
 		var bucket: Array = buckets[home]
 		for i in bucket.size():
 			var id := "key%d" % bucket[i]
-			record("访问桶 %d 中的键 %d" % [home + 1, bucket[i]], [id], 1)
+			record("访问桶 %d 中的键 %d" % [home, bucket[i]], [id], 1)
 			if bucket[i] == value:
 				if action == "delete":
 					bucket.remove_at(i)
@@ -72,20 +72,20 @@ func perform(action: String, args: Dictionary) -> bool:
 				return true
 		if action == "insert":
 			bucket.append(value)
-			record("将键 %d 加入桶 %d 的链表" % [value, home + 1], ["key%d" % value], 3)
+			record("将键 %d 加入桶 %d 的链表" % [value, home], ["key%d" % value], 3)
 		else:
 			record("键 %d 不存在" % value, [], 3)
 		return true
 	var first_free := -1
 	for index in probe(value):
 		var id := "slot%d" % index
-		record("探测槽位 %d" % [index + 1], [id], 1)
+		record("探测槽位 %d" % index, [id], 1)
 		if slots[index] is int and slots[index] == value:
 			if action == "delete":
 				slots[index] = "DEL"
 				record("标记 DEL，保留探测链连续性", [id], 2)
 			else:
-				record("找到键 %d，槽位 %d" % [value, index + 1], [id], 3)
+				record("找到键 %d，槽位 %d" % [value, index], [id], 3)
 			return true
 		if slots[index] == null or slots[index] is String:
 			if first_free == -1: first_free = index
@@ -96,7 +96,7 @@ func perform(action: String, args: Dictionary) -> bool:
 		if first_free == -1:
 			return fail("探测序列中没有空槽。二次探测不一定访问所有槽位。" if kind == "hash_quadratic" else "哈希表已满。")
 		slots[first_free] = value
-		record("将 %d 写入槽位 %d" % [value, first_free + 1], ["slot%d" % first_free], 3)
+		record("将 %d 写入槽位 %d" % [value, first_free], ["slot%d" % first_free], 3)
 	else:
 		record("键 %d 不存在" % value, [], 3)
 	return true
@@ -107,20 +107,22 @@ func view() -> Dictionary:
 	var count := 0
 	for i in SIZE:
 		var label: Variant = slots[i] if slots[i] != null else "·"
-		if kind == "hash_chain": label = i + 1
-		nodes.append(vertex("slot%d" % i, label, 70, 65 + i * 65, "h=%d" % [i + 1], "box",
-			"muted" if label in ["·", "DEL"] else ""))
+		if kind == "hash_chain": label = "桶"
+		var slot := vertex("slot%d" % i, label, 70 + i * 74, 115, "[%d]" % i, "box",
+			"muted" if label in ["·", "DEL"] else "")
+		slot["detail_offset"] = Vector2(0, -38)
+		nodes.append(slot)
 		if kind == "hash_chain":
 			for j in buckets[i].size():
 				var id := "key%d" % buckets[i][j]
-				nodes.append(vertex(id, buckets[i][j], 230 + j * 95, 65 + i * 65))
+				nodes.append(vertex(id, buckets[i][j], 70 + i * 74, 215 + j * 72))
 				edges.append(edge("slot%d" % i if j == 0 else "key%d" % buckets[i][j - 1], id))
 				count += 1
 		elif slots[i] is int:
 			count += 1
 	return {"nodes": nodes, "edges": edges,
 		"stats": "表长 11  ·  元素 %d  ·  负载 %.2f%s" % [count, float(count) / SIZE,
-		"  ·  (h−1+i²) mod 11 + 1" if kind == "hash_quadratic" else ""]}
+		"  ·  (h+i²) mod 11" if kind == "hash_quadratic" else ""]}
 
 func invariant() -> String:
 	for i in SIZE:

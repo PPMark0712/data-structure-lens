@@ -14,8 +14,11 @@ func check(ok: bool, message: String) -> void:
 
 func _run() -> void:
 	_array_moves()
+	_array_deletes()
 	_array_migration()
 	_linked_heads()
+	_stack_container()
+	_hash_layout()
 	_monotonic()
 	_sparse_table()
 	_segment_intervals()
@@ -31,6 +34,58 @@ func _positions(frame: Dictionary) -> Dictionary:
 	for node in frame.nodes:
 		if str(node.id).is_valid_int(): result[node.id] = node.pos
 	return result
+
+func _stack_container() -> void:
+	var model := LinearModel.new("stack")
+	var view := model.view()
+	check(view.outlines.size() == 1 and view.outlines[0].points.size() == 4,
+		"stack has one open-top container")
+	var outline: Array = view.outlines[0].points
+	check(outline[0].y == outline[-1].y and outline[0].x < outline[-1].x,
+		"stack container leaves its top edge open")
+	for node in view.nodes:
+		check(node.detail_offset.x > 0, "stack index is placed beside its cell")
+	var pushed_id := str(model.next_id)
+	check(model.perform("push", {"value": 99}), "stack push")
+	var entering: Array = model.frames.filter(func(frame): return frame.message.contains("从栈口放入"))
+	check(entering.size() == 1, "stack push emits an entry frame")
+	var entering_node: Dictionary = entering[0].nodes.filter(func(node): return node.id == pushed_id)[0]
+	var settled_node: Dictionary = model.frames[-1].nodes.filter(func(node): return node.id == pushed_id)[0]
+	check(entering_node.pos.y == settled_node.pos.y - 68, "pushed value moves down through stack opening")
+	check(entering_node.detail == settled_node.detail and settled_node.detail.ends_with("TOP"),
+		"moving stack value keeps its logical index and TOP label")
+	var before_pop: Vector2 = settled_node.pos
+	check(model.perform("pop", {}), "stack pop")
+	var leaving: Array = model.frames.filter(func(frame): return frame.message.contains("从栈口取出"))
+	check(leaving.size() == 1, "stack pop emits an exit frame")
+	var leaving_node: Dictionary = leaving[0].nodes.filter(func(node): return node.id == pushed_id)[0]
+	check(leaving_node.pos.y == before_pop.y - 68, "popped value moves up through stack opening")
+	check(model.frames[-1].nodes.all(func(node): return node.id != pushed_id),
+		"popped value disappears after leaving the container")
+
+func _hash_layout() -> void:
+	for kind in ["hash_linear", "hash_quadratic", "hash_chain"]:
+		var model := HashModel.new(kind)
+		var view := model.view()
+		var slots: Array = view.nodes.filter(func(node): return node.id.begins_with("slot"))
+		check(slots.size() == HashModel.SIZE, kind + " renders every hash slot")
+		for i in HashModel.SIZE:
+			var slot: Dictionary = slots.filter(func(node): return node.id == "slot%d" % i)[0]
+			check(slot.pos == Vector2(70 + i * 74, 115), kind + " slots form one horizontal row")
+			check(slot.detail == "[%d]" % i and slot.detail_offset.y < 0,
+				kind + " shows an unobstructed 0-based index")
+		check(model.code[0] == "h = ((key % 11) + 11) % 11",
+			kind + " hash formula is 0-based")
+		check(model.operations()[0].note.contains("0–10"), kind + " operation note states 0-based buckets")
+		if kind == "hash_chain":
+			for value in [12, 23, 7, 34]:
+				var key: Dictionary = view.nodes.filter(func(node): return node.id == "key%d" % value)[0]
+				var bucket: Dictionary = slots.filter(
+					func(node): return node.id == "slot%d" % model._hash(value))[0]
+				check(key.pos.x == bucket.pos.x and key.pos.y > bucket.pos.y,
+					"hash chains extend downward from their bucket")
+		check(model.perform("insert", {"value": 45}), kind + " insert for index narration")
+		check(model.frames[1].message == "h(45) = 1", kind + " hash narration uses 0-based index")
 
 func _array_moves() -> void:
 	for kind in ["array", "dynamic_array"]:
@@ -55,6 +110,33 @@ func _array_moves() -> void:
 			check(moved_ids == expected, "right shifts start at tail and end at insertion slot")
 			check(model.items[index - 1].value == 99, "new value occupies requested position")
 			check(model.visual_slots.is_empty(), "transient positions cleared")
+
+func _array_deletes() -> void:
+	for kind in ["array", "dynamic_array"]:
+		for index in range(1, 5):
+			var model := LinearModel.new(kind)
+			var old_items := model.items.duplicate(true)
+			check(model.perform("delete", {"index": index}), kind + " delete")
+			var moved_ids: Array = []
+			var previous := _positions(model.frames[0])
+			for frame in model.frames.slice(1):
+				var now := _positions(frame)
+				var moved: Array = []
+				for id in previous:
+					if now.has(id) and now[id].x != previous[id].x:
+						moved.append(id)
+						check(now[id] - previous[id] == Vector2(-78, 0), "one slot left")
+				check(moved.size() <= 1, "only one deletion shift per frame")
+				moved_ids.append_array(moved)
+				previous = now
+			var expected: Array = []
+			for i in range(index, old_items.size()):
+				expected.append(str(old_items[i].id))
+			check(moved_ids == expected, "left shifts start after deletion and proceed to tail")
+			check(model.frames.any(func(frame): return frame.message.contains("左移")),
+				"array deletion explains left shifts")
+			check(model.frames.all(func(frame): return not frame.message.contains("重接")),
+				"array deletion does not use linked-list wording")
 
 func _array_migration() -> void:
 	var model := LinearModel.new("dynamic_array")
@@ -186,8 +268,9 @@ func _monotonic() -> void:
 
 func _sparse_table() -> void:
 	var model := RangeModel.new("sparse_table")
-	for l in range(1, 9):
-		for r in range(l, 9):
+	check(model.data.size() == 16 and model.table.size() == 5, "ST uses 16 elements and five levels")
+	for l in range(1, 17):
+		for r in range(l, 17):
 			check(model.perform("query", {"l": l, "r": r}), "ST 1-based query")
 			var expected: int = model.data[l - 1]
 			for i in range(l - 1, r): expected = mini(expected, model.data[i])
@@ -198,28 +281,38 @@ func _sparse_table() -> void:
 		var k := int(str(bar.id).get_slice("_", 0).substr(1))
 		var l: int = bar.range[0]
 		var r: int = bar.range[1]
-		check(bar.size.x == (r - l + 1) * 90, "bar width matches interval")
-		check(bar.pos.x - bar.size.x / 2 == 40 + (l - 1) * 90, "bar starts above left boundary")
-		check(bar.pos.x + bar.size.x / 2 == 40 + r * 90, "bar ends above right boundary")
+		check(bar.size.x == (r - l + 1) * RangeModel.ST_CELL_WIDTH, "bar width matches interval")
+		check(bar.pos.x - bar.size.x / 2 == 40 + (l - 1) * RangeModel.ST_CELL_WIDTH,
+			"bar starts above left boundary")
+		check(bar.pos.x + bar.size.x / 2 == 40 + r * RangeModel.ST_CELL_WIDTH,
+			"bar ends above right boundary")
 		if not lanes.has(k): lanes[k] = {}
 		lanes[k][bar.pos.y] = true
 		for other in bars:
 			if bar.id == other.id or bar.pos.y != other.pos.y: continue
 			check(not Rect2(bar.pos - bar.size / 2 + Vector2.ONE * 0.1, bar.size - Vector2.ONE * 0.2).intersects(
 				Rect2(other.pos - other.size / 2, other.size)), "bars in same lane do not overlap")
-	check(lanes[0].size() == 1 and lanes[1].size() == 2 and lanes[2].size() == 4, "ST uses 1/2/4 staggered lanes")
-	check(not model.perform("query", {"l": 0, "r": 8}), "ST rejects zero index")
+	check(lanes[0].size() == 1 and lanes[1].size() == 2 and lanes[2].size() == 4 and
+		lanes[3].size() == 8 and lanes[4].size() == 1, "ST uses 1/2/4/8/1 staggered lanes")
+	check(not model.perform("query", {"l": 0, "r": 16}), "ST rejects zero index")
 
 func _segment_intervals() -> void:
 	var model := SegmentModel.new()
+	check(model.domain == 16 and model.data.size() == 16, "segment tree uses range [1,16]")
 	for node in model.view().nodes:
-		check(node.shape == "box", "lazy segment uses rectangles")
+		check(node.shape == "box", "segment tree uses rectangles")
 		if node.has("range"):
-			check(node.size.x == (node.range[1] - node.range[0] + 1) * 100, "interval width")
-			check(node.pos.x - node.size.x / 2 == 40 + (node.range[0] - 1) * 100, "aligned left boundary")
-			check(node.pos.x + node.size.x / 2 == 40 + node.range[1] * 100, "aligned right boundary")
+			check(node.size.x == (node.range[1] - node.range[0] + 1) *
+				SegmentModel.INTERVAL_CELL_WIDTH, "interval width")
+			check(node.pos.x - node.size.x / 2 ==
+				40 + (node.range[0] - 1) * SegmentModel.INTERVAL_CELL_WIDTH,
+				"aligned left boundary")
+			check(node.pos.x + node.size.x / 2 ==
+				40 + node.range[1] * SegmentModel.INTERVAL_CELL_WIDTH,
+				"aligned right boundary")
 	check(model.perform("add", {"l": 2, "r": 6, "value": 5}), "range add")
-	check(model.data == [3, 6, 9, 6, 10, 14, 2, 6], "source array updates exactly once")
+	check(model.data == [3, 6, 9, 6, 10, 14, 2, 6, 5, 3, 5, 8, 9, 7, 9, 3],
+		"source array updates exactly once")
 	check(model.perform("query", {"l": 2, "r": 6}) and model.result == 45, "range sum after add")
 	var final: Dictionary = model.frames.back()
 	var pieces: Array = []
@@ -228,7 +321,7 @@ func _segment_intervals() -> void:
 	check(pieces == [[2, 2], [3, 4], [5, 6]], "final frame retains exact disjoint cover")
 	check(final.nodes.any(func(n): return n.tone == "blue"), "visited ancestors remain blue")
 	check(final.annotations.back().text.contains("[2,2] + [3,4] + [5,6]"), "persistent decomposition explanation")
-	check(model.perform("add", {"l": 1, "r": 8, "value": -2}), "whole range lazy update")
+	check(model.perform("add", {"l": 1, "r": 16, "value": -2}), "whole range lazy update")
 	check(model.used == [model.root], "new operation clears previous cover")
 	var expected := model.data.duplicate()
 	check(model.perform("query", {"l": 3, "r": 5}) and model.result == 19, "subset query pushes pending lazy")
@@ -237,6 +330,13 @@ func _segment_intervals() -> void:
 		var other := SegmentModel.new(kind)
 		check(other.view().nodes.all(func(n): return n.shape == "circle"), "other segment trees retain circles")
 		check(not other.view().edges.is_empty(), "other segment trees retain edges")
+	var persistent := SegmentModel.new("persistent_segment")
+	var persistent_note: String = persistent.operations()[0].note
+	check(persistent_note.contains("节点间连线关系与区间为准"), "persistent layout caveat is documented")
+	for node in persistent.view().nodes:
+		var interval := "[%d,%d]" % [persistent.pool[int(node.id)].l, persistent.pool[int(node.id)].r]
+		check(node.detail.is_empty() and node.lines.has(interval),
+			"persistent intervals are rendered inside circles")
 
 func _heap_filling() -> void:
 	for action in ["build", "sort"]:

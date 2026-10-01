@@ -38,7 +38,7 @@ static func describe(kind: String, action: String) -> String:
 		"hash_linear", "hash_quadratic", "hash_chain":
 			var route := "按偏移 0,1,2,… 依次探测" if kind == "hash_linear" else ("按平方偏移 0,1,4,9,… 探测" if kind == "hash_quadratic" else "沿对应桶的链表访问")
 			notes = {
-				"insert": "计算 1–11 范围的哈希桶；" + route + "，在可用位置插入互异键。",
+				"insert": "计算 0–10 范围的哈希桶；" + route + "，在可用位置插入互异键。",
 				"find": route + "并比较键。" + ("链尾仍未匹配则不存在。" if kind == "hash_chain" else "遇空槽可停止；遇 DEL 必须继续。"),
 				"delete": route + "定位键；" + ("断开链表中的目标节点。" if kind == "hash_chain" else "将槽标为 DEL，以免中断其他键的探测路径。"),
 				"clear": "删除所有键、冲突链与 DEL 标记，恢复空表。"
@@ -51,7 +51,7 @@ static func describe(kind: String, action: String) -> String:
 			}
 		"sparse_table":
 			notes = {
-				"build": "第 0 层保存单个值；第 k 层合并两个长度 2^(k−1) 的区间。长条覆盖原数组，下标从 1 起，各层长度依次为 1、2、4、8。",
+				"build": "第 0 层保存单个值；第 k 层合并两个长度 2^(k−1) 的区间。长条覆盖原数组，下标从 1 起，各层长度依次为 1、2、4、8、16。",
 				"query": "取 k=floor(log2(r−l+1))，读取从 l 开始、在 r 结束的两段长度 2^k 的最小值，再取 min；两段可以重叠。"
 			}
 		"segment", "dynamic_segment", "persistent_segment":
@@ -61,7 +61,8 @@ static func describe(kind: String, action: String) -> String:
 				"version": "切换到指定历史根（首个版本为 V1）；共享节点保持不变，可从该版本继续分支。"
 			}
 			if kind == "dynamic_segment": notes.add = "在范围 [1,32] 内给单点增加 Δ，只沿根到叶的路径按需创建节点，再回溯更新区间和。"
-			if kind == "persistent_segment": notes.add = "从当前版本复制根到目标叶子的路径，给单点增加 Δ；其他子树共享，旧版本保持不变。"
+			if kind == "persistent_segment":
+				notes.add = "从当前版本复制根到目标叶子的路径，给单点增加 Δ；其他子树共享，旧版本保持不变。为优化排版，显示的左右子节点相对位置不一定正确，请以节点间连线关系与区间为准。"
 			if kind == "segment":
 				notes.add += "浅蓝保留访问路径，绿色标记直接更新区间；结束后保留与原数组对应的区间拆分。"
 				notes.query += "绿色区间直接贡献答案，浅蓝记录递归访问；结束后仍可查看区间拆分与原数组对应关系。"

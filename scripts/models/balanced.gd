@@ -196,7 +196,8 @@ func perform(action: String, args: Dictionary) -> bool:
 			var id := _lookup(key)
 			found = id != 0
 			if action == "delete": _delete(id)
-			else: record("找到键 %d" % key if found else "键 %d 不存在" % key, [str(id)], 0)
+			else: record("找到键 %d" % key if found else "键 %d 不存在" % key,
+				[str(id)] if found else [], 0)
 	record("操作完成；根 = %s" % (str(pool[root].key) if root else "∅"))
 	return true
 

@@ -8,6 +8,17 @@ import zipfile
 
 VERSION = "4.7.2"
 ROOT = Path(__file__).resolve().parents[1]
+WEB_TEMPLATE_MEMBERS = {"godot.html", "godot.js", "godot.wasm"}
+
+
+def template_ready(path):
+    if not path.is_file() or not zipfile.is_zipfile(path):
+        return False
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return WEB_TEMPLATE_MEMBERS.issubset(archive.namelist()) and archive.testzip() is None
+    except (OSError, zipfile.BadZipFile):
+        return False
 
 
 class RemoteZip(io.RawIOBase):
@@ -63,7 +74,7 @@ def main():
     target = ROOT / ".tools" / "templates"
     target.mkdir(parents=True, exist_ok=True)
     names = ["web_nothreads_release.zip"] + (["web_nothreads_debug.zip"] if args.debug else [])
-    missing = [name for name in names if not (target / name).exists()]
+    missing = [name for name in names if not template_ready(target / name)]
     if not missing:
         print(f"Templates ready: {target}")
         return

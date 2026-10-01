@@ -1,6 +1,9 @@
 class_name SegmentModel
 extends LabModel
 
+const SEGMENT_VALUES := [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8, 9, 7, 9, 3]
+const INTERVAL_CELL_WIDTH := 72.0
+
 var pool: Dictionary = {}
 var root := 0
 var roots: Array[int] = []
@@ -26,9 +29,13 @@ func _init(p_kind: String = "segment") -> void:
 		for index in [4, 13, 25]:
 			_add(root, index, index, index)
 			data[index - 1] += index
+	elif kind == "segment":
+		domain = 16
+		data = SEGMENT_VALUES.duplicate()
+		root = _build(1, domain)
 	else:
 		data = [3, 1, 4, 1, 5, 9, 2, 6]
-		root = _build(1, 8)
+		root = _build(1, domain)
 	roots.append(root)
 	version_data.append(data.duplicate())
 	recording = true
@@ -205,6 +212,7 @@ func view() -> Dictionary:
 	if kind == "segment": return _interval_view()
 	var nodes: Array = []
 	var edges: Array = []
+	var annotations: Array = []
 	var levels := {}
 	for id in pool:
 		var n: Dictionary = pool[id]
@@ -224,14 +232,20 @@ func view() -> Dictionary:
 				x = 70 + column * 110
 			else:
 				x = 50 + float(n.l + n.r - 2) / 2 * (95 if domain == 8 else 35)
-			var label := "[%d,%d]" % [n.l, n.r]
+			var interval := "[%d,%d]" % [n.l, n.r]
+			var label := interval
 			if n.tag != 0: label += " +%d" % n.tag
 			var v := roots.find(id)
-			if v >= 0 and kind == "persistent_segment": label = "V%d " % [v + 1] + label
-			nodes.append(vertex(id, n.sum, x, 80 + depth * 115, label, "circle", "green" if id == root else ""))
+			var node := vertex(id, n.sum, x, 80 + depth * 115,
+				"" if kind == "persistent_segment" else label, "circle", "green" if id == root else "")
+			if kind == "persistent_segment":
+				node["lines"] = ["Σ%d" % n.sum, interval]
+				if v >= 0:
+					annotations.append({"pos": node.pos + Vector2(-16, -40), "text": "V%d" % [v + 1]})
+			nodes.append(node)
 			if n.left: edges.append(edge(id, n.left))
 			if n.right: edges.append(edge(id, n.right))
-	return {"nodes": nodes, "edges": edges, "stats":
+	return {"nodes": nodes, "edges": edges, "annotations": annotations, "stats":
 		"范围 [1,%d]  ·  已分配 %d 个节点%s" % [domain, pool.size(),
 		"  ·  当前 V%d / 共 %d 个版本" % [version + 1, roots.size()] if kind == "persistent_segment" else ""]}
 
@@ -240,9 +254,11 @@ func _interval_view() -> Dictionary:
 	var annotations: Array = [{"pos": Vector2(40, 30), "text": "原数组 · 当前数值"}]
 	for i in domain:
 		var tone := "green" if not selected_range.is_empty() and i + 1 >= selected_range[0] and i + 1 <= selected_range[1] else ""
-		var cell := vertex("a%d" % [i + 1], data[i], 40 + (i + 0.5) * 100, 75, "[%d]" % [i + 1], "box", tone)
-		cell["size"] = Vector2(100, 40)
+		var cell := vertex("a%d" % [i + 1], data[i],
+			40 + (i + 0.5) * INTERVAL_CELL_WIDTH, 75, "[%d]" % [i + 1], "box", tone)
+		cell["size"] = Vector2(INTERVAL_CELL_WIDTH, 40)
 		nodes.append(cell)
+	var max_depth := 0
 	for id in pool:
 		var n: Dictionary = pool[id]
 		var length: int = n.r - n.l + 1
@@ -251,18 +267,20 @@ func _interval_view() -> Dictionary:
 		while span > length:
 			span >>= 1
 			depth += 1
+		max_depth = maxi(max_depth, depth)
 		var tone := "green" if used.has(id) else ("blue" if visited.has(id) else "")
-		var bar := vertex(id, n.sum, 40 + (n.l - 1 + length / 2.0) * 100,
+		var bar := vertex(id, n.sum, 40 + (n.l - 1 + length / 2.0) * INTERVAL_CELL_WIDTH,
 			190 + depth * 100, "", "box", tone)
-		bar["size"] = Vector2(length * 100, 64)
+		bar["size"] = Vector2(length * INTERVAL_CELL_WIDTH, 64)
 		bar["lines"] = ["[%d,%d]" % [n.l, n.r], "sum=%d" % n.sum, "lazy=%d" % n.tag]
 		bar["range"] = [n.l, n.r]
 		nodes.append(bar)
-	annotations.append({"pos": Vector2(40, 565), "text": "浅蓝：递归访问 / 下传    绿色：直接更新或取和的区间、原数组目标范围"})
+	var note_y := 190 + max_depth * 100 + 80
+	annotations.append({"pos": Vector2(40, note_y), "text": "浅蓝：递归访问 / 下传    绿色：直接更新或取和的区间、原数组目标范围"})
 	var pieces: Array[String] = []
 	for id in used: pieces.append("[%d,%d]" % [pool[id].l, pool[id].r])
 	if not pieces.is_empty():
-		annotations.append({"pos": Vector2(40, 595), "text": "本次区间拆分：" + " + ".join(pieces) +
+		annotations.append({"pos": Vector2(40, note_y + 30), "text": "本次区间拆分：" + " + ".join(pieces) +
 			"  →  原数组 [%d,%d]" % [selected_range[0], selected_range[1]]})
 	return {"nodes": nodes, "edges": [], "annotations": annotations,
 		"stats": "范围 [1,%d]  ·  sum=区间和  ·  lazy=待下传增量" % domain}

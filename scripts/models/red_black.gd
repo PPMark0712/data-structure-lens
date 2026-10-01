@@ -56,11 +56,12 @@ func _delete(id: int) -> void:
 	var parent: int = pool[id].parent
 	_replace(id, replacement)
 	pool.erase(id)
-	record("删除%s节点，接回子树" % ("红" if was_red else "黑"), [str(replacement)], 4)
+	var active := [str(replacement)] if replacement else ([str(parent)] if parent else [])
+	record("删除%s节点，接回子树" % ("红" if was_red else "黑"), active, 4)
 	if not was_red: _fix_delete(replacement, parent)
 	_color(root, false)
 	_refresh(root)
-	record("删除修复完成，各根到 NIL 路径黑高相等", [str(root)], 5)
+	record("删除修复完成，各根到 NIL 路径黑高相等", [str(root)] if root else [], 5)
 
 func _fix_delete(x: int, parent: int) -> void:
 	while x != root and not _red(x):

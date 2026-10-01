@@ -41,6 +41,10 @@ func _run() -> void:
 	ui.execute_button.pressed.emit()
 	check(ui.status.text.contains("整数"), "invalid numeric input is visible")
 	check(ui.model.view() == before and ui.history.is_empty(), "parse error is transactional")
+	ui.editors.index.text = "-9223372036854775808"
+	ui.execute_button.pressed.emit()
+	check(ui.status.text.contains("9999"), "minimum int64 cannot bypass scalar limits")
+	check(ui.model.view() == before and ui.history.is_empty(), "extreme numeric input is transactional")
 	ui.editors.index.text = "99"
 	ui.execute_button.pressed.emit()
 	check(ui.status.text.contains("位置"), "out of range error is visible")
@@ -56,8 +60,21 @@ func _run() -> void:
 	check(not ui.playing and ui.canvas.progress == progress, "pause freezes Tween")
 	ui._toggle_play()
 	check(ui.playing, "play resumes")
+	ui._set_speed(3)
+	check(ui.speed == 4.0 and ui.canvas.animation_speed == 4.0,
+		"speed change updates timeline and active Tween clock together")
 	ui._go(ui.trace.size() - 1)
 	check(not ui.playing and ui.cursor == ui.trace.size() - 1, "jump finishes playback")
+	ui.editors.index.text = "99"
+	ui.execute_button.pressed.emit()
+	check(ui.status.has_theme_color_override("font_color"), "operation error uses error color")
+	ui._undo()
+	check(not ui.status.has_theme_color_override("font_color"), "successful undo clears error color")
+	ui.canvas.previous = {"nodes": [{"id": "moving", "pos": Vector2(0, 0)}], "edges": []}
+	ui.canvas.current = {"nodes": [{"id": "moving", "pos": Vector2(100, 0)}], "edges": []}
+	ui.canvas.progress = 0.25
+	check(ui.canvas._interpolated_positions().moving == Vector2(25, 0),
+		"click hit testing shares the current interpolated node position")
 	# Clicking coordinate/ID nodes fills the intended fields.
 	ui._select(LabCatalog.ENTRIES[11]) # Fenwick
 	ui._pick_node("a2")
@@ -85,7 +102,7 @@ func _run() -> void:
 	ui._pick_node("s2_1")
 	check(ui.editors.l.text == "2" and ui.editors.r.text == "5", "ST bar fills covered interval")
 	ui.canvas.fit()
-	var bar: Dictionary = ui.canvas.current.nodes.filter(func(node): return node.id == "s3_0")[0]
+	var bar: Dictionary = ui.canvas.current.nodes.filter(func(node): return node.id == "s4_0")[0]
 	var point: Vector2 = (bar.pos + Vector2(bar.size.x / 2 - 5, 0)) * ui.canvas.zoom + ui.canvas.offset
 	var mouse := InputEventMouseButton.new()
 	mouse.button_index = MOUSE_BUTTON_LEFT
@@ -94,23 +111,23 @@ func _run() -> void:
 	ui.canvas._gui_input(mouse)
 	mouse.pressed = false
 	ui.canvas._gui_input(mouse)
-	check(ui.editors.l.text == "1" and ui.editors.r.text == "8", "long bar edge is clickable")
+	check(ui.editors.l.text == "1" and ui.editors.r.text == "16", "long bar edge is clickable")
 	for node in ui.canvas.current.nodes:
 		var left: Vector2 = (node.pos - node.size / 2) * ui.canvas.zoom + ui.canvas.offset
 		var right: Vector2 = (node.pos + node.size / 2) * ui.canvas.zoom + ui.canvas.offset
 		check(Rect2(Vector2.ZERO, ui.canvas.size).has_point(left) and
 			Rect2(Vector2.ZERO, ui.canvas.size).has_point(right), "ST fit contains entire bar")
-	ui._select(LabCatalog.ENTRIES[14]) # Lazy interval/source picking and retained highlights.
+	ui._select(LabCatalog.ENTRIES[14]) # Segment interval/source picking and retained highlights.
 	ui._pick_node("a2")
 	ui._pick_node("a6")
 	check(ui.editors.l.text == "2" and ui.editors.r.text == "6" and ui.editors.value.text == "5",
-		"Lazy source cells select endpoints without changing delta")
+		"segment source cells select endpoints without changing delta")
 	ui.execute_button.pressed.emit()
 	ui._go(ui.trace.size() - 1)
 	var retained: Dictionary = ui.model.view().duplicate(true)
 	var interval: Dictionary = retained.nodes.filter(func(n): return n.get("range", []) == [3, 4])[0]
 	ui._pick_node(interval.id)
-	check(ui.editors.l.text == "3" and ui.editors.r.text == "4", "Lazy bar selects covered interval")
+	check(ui.editors.l.text == "3" and ui.editors.r.text == "4", "segment bar selects covered interval")
 	ui._choose_operation(1)
 	ui.execute_button.pressed.emit()
 	ui._go(ui.trace.size() - 1)

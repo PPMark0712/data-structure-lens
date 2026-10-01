@@ -46,16 +46,21 @@ func _heaps() -> void:
 				check(model.perform("merge", {"values": "6,-2,6"}), kind + " union")
 				reference.append_array([6, -2, 6])
 			else:
-				var ids: Array = model.pool.keys()
-				var id: int = ids[rng.randi_range(0, ids.size() - 1)]
-				var old: int = model.pool[id].value
+				var handles: Array = model.pool.values().map(func(node): return node.handle)
+				var id: int = handles[rng.randi_range(0, handles.size() - 1)]
+				var node_id: int = model.node_for_handle(id)
+				var old: int = model.pool[node_id].value
 				reference.erase(old)
 				if choice == 3:
 					var value := old - rng.randi_range(0, 20)
 					check(model.perform("decrease", {"id": id, "value": value}), kind + " decrease")
+					node_id = model.node_for_handle(id)
+					check(node_id != 0 and model.pool[node_id].value == value,
+						kind + " decrease preserves requested node identity")
 					reference.append(value)
 				else:
 					check(model.perform("delete", {"id": id}), kind + " delete")
+					check(model.node_for_handle(id) == 0, kind + " delete removes requested node identity")
 			check(model.invariant().is_empty(), kind + ": " + model.invariant())
 			var actual: Array = []
 			if kind == "binary_heap":

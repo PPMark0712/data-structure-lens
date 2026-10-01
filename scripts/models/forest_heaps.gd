@@ -27,11 +27,20 @@ func operations() -> Array:
 
 func _insert(value: int) -> void:
 	var id := uid()
-	pool[id] = {"value": value, "parent": 0, "children": [], "mark": false}
+	pool[id] = {"value": value, "handle": id, "parent": 0, "children": [], "mark": false}
 	roots.append(id)
-	record("单节点树 #%d 加入根链表" % id, [str(id)], 0)
+	record("单节点树 #%d 加入根链表" % id, [str(pool[id].handle)], 0)
 	if kind == "binomial": _consolidate()
 	_update_min()
+
+func node_for_handle(handle: int) -> int:
+	for id in pool:
+		if pool[id].handle == handle:
+			return id
+	return 0
+
+func _visible_id(id: int) -> String:
+	return str(pool[id].handle)
 
 func _update_min() -> void:
 	minimum = 0
@@ -55,7 +64,9 @@ func _consolidate() -> void:
 			pool[y].parent = x
 			pool[y].mark = false
 			pool[x].children.append(y)
-			record("两棵度数 %d 的树链接：#%d → #%d" % [degree, y, x], [str(x), str(y)], 2)
+			record("两棵度数 %d 的树链接：#%d → #%d" %
+				[degree, pool[y].handle, pool[x].handle],
+				[_visible_id(x), _visible_id(y)], 2)
 			degree += 1
 		degrees[degree] = x
 	roots.sort_custom(func(a, b): return pool[a].children.size() < pool[b].children.size())
@@ -79,15 +90,16 @@ func _cut(id: int, parent: int) -> void:
 	pool[id].parent = 0
 	pool[id].mark = false
 	roots.append(id)
-	record("切断 #%d 与父亲 #%d；节点回到根链表" % [id, parent], [str(id), str(parent)], 3)
+	record("切断 #%d 与父亲 #%d；节点回到根链表" %
+		[pool[id].handle, pool[parent].handle], [_visible_id(id), _visible_id(parent)], 3)
 
 func _cascade(id: int) -> void:
 	var parent: int = pool[id].parent
 	if parent == 0: return
-	calls.append("cascading_cut(#%d)" % id)
+	calls.append("cascading_cut(#%d)" % pool[id].handle)
 	if not pool[id].mark:
 		pool[id].mark = true
-		record("#%d 首次丢失孩子，设置 mark" % id, [str(id)], 4)
+		record("#%d 首次丢失孩子，设置 mark" % pool[id].handle, [_visible_id(id)], 4)
 	else:
 		_cut(id, parent)
 		_cascade(parent)
@@ -95,7 +107,7 @@ func _cascade(id: int) -> void:
 
 func _decrease(id: int, value: int) -> void:
 	pool[id].value = value
-	record("将 #%d 的键减为 %d" % [id, value], [str(id)], 3)
+	record("将 #%d 的键减为 %d" % [pool[id].handle, value], [_visible_id(id)], 3)
 	var parent: int = pool[id].parent
 	if kind == "fibonacci":
 		if parent and pool[id].value < pool[parent].value:
@@ -103,10 +115,15 @@ func _decrease(id: int, value: int) -> void:
 			_cascade(parent)
 	else:
 		while parent and pool[id].value < pool[parent].value:
+			var child_handle: int = pool[id].handle
+			var parent_handle: int = pool[parent].handle
 			var temp: int = pool[id].value
 			pool[id].value = pool[parent].value
 			pool[parent].value = temp
-			record("二项堆减键：键与父节点交换，节点编号不变", [str(id), str(parent)], 3)
+			pool[id].handle = parent_handle
+			pool[parent].handle = child_handle
+			record("二项堆减键：元素 #%d 与父元素 #%d 交换位置" %
+				[child_handle, parent_handle], [_visible_id(id), _visible_id(parent)], 3)
 			id = parent
 			parent = pool[id].parent
 	_update_min()
@@ -114,9 +131,11 @@ func _decrease(id: int, value: int) -> void:
 func perform(action: String, args: Dictionary) -> bool:
 	if action == "insert" and pool.size() >= 20: return fail("最多演示 20 个节点。")
 	if action == "extract" and pool.is_empty(): return fail("空堆无法提取。")
+	var target := 0
 	if action in ["decrease", "delete"]:
-		if not pool.has(int(args.id)): return fail("节点编号不存在。")
-		if action == "decrease" and int(args.value) > pool[int(args.id)].value:
+		target = node_for_handle(int(args.id))
+		if target == 0: return fail("节点编号不存在。")
+		if action == "decrease" and int(args.value) > pool[target].value:
 			return fail("新值不能大于原值；此操作是减键。")
 	var values: Array = []
 	if action == "merge":
@@ -127,9 +146,9 @@ func perform(action: String, args: Dictionary) -> bool:
 	match action:
 		"insert": _insert(int(args.value))
 		"extract": _extract()
-		"decrease": _decrease(int(args.id), int(args.value))
+		"decrease": _decrease(target, int(args.value))
 		"delete":
-			_decrease(int(args.id), -1000000000)
+			_decrease(target, -1000000000)
 			_extract()
 		"merge":
 			# Build the second heap independently, then union its root list.
@@ -146,7 +165,8 @@ func perform(action: String, args: Dictionary) -> bool:
 			record("连接两堆根链表", [], 0)
 			if kind == "binomial": _consolidate()
 	_update_min()
-	record("最小根为 #%d；操作完成" % minimum if minimum else "堆已空", [str(minimum)], 5)
+	record("最小根为 #%d；操作完成" % pool[minimum].handle if minimum else "堆已空",
+		[_visible_id(minimum)] if minimum else [], 5)
 	return true
 
 func _width(id: int) -> int:
@@ -157,11 +177,11 @@ func _width(id: int) -> int:
 func _layout(id: int, left: float, depth: int, nodes: Array, edges: Array) -> void:
 	var node: Dictionary = pool[id]
 	var width := _width(id)
-	nodes.append(vertex(id, node.value, left + width * 48, 80 + depth * 115,
-		"#%d · d%d%s" % [id, node.children.size(), " · M" if node.mark else ""],
+	nodes.append(vertex(node.handle, node.value, left + width * 48, 80 + depth * 115,
+		"#%d · d%d%s" % [node.handle, node.children.size(), " · M" if node.mark else ""],
 		"circle", "red" if node.mark else ("green" if id == minimum else "")))
 	for child in node.children:
-		edges.append(edge(id, child))
+		edges.append(edge(node.handle, pool[child].handle))
 		_layout(child, left, depth + 1, nodes, edges)
 		left += _width(child) * 96
 
@@ -173,13 +193,14 @@ func view() -> Dictionary:
 		var id: int = roots[i]
 		_layout(id, left, 0, nodes, edges)
 		left += _width(id) * 96 + 40
-		if i: edges.append(edge(roots[i - 1], id, "root", true))
+		if i: edges.append(edge(pool[roots[i - 1]].handle, pool[id].handle, "root", true))
 	return {"nodes": nodes, "edges": edges, "stats":
 		"节点 %d · 根 %d · min %s · M=已丢失一个孩子" % [pool.size(), roots.size(),
 		str(pool[minimum].value) if pool.has(minimum) else "∅"]}
 
 func invariant() -> String:
 	var seen := {}
+	var handles := {}
 	var pending := roots.duplicate()
 	var degrees := {}
 	for id in roots:
@@ -192,6 +213,8 @@ func invariant() -> String:
 		if seen.has(id): return "heap cycle"
 		seen[id] = true
 		var n: Dictionary = pool[id]
+		if handles.has(n.handle): return "duplicate heap handle"
+		handles[n.handle] = true
 		for i in n.children.size():
 			var child: int = n.children[i]
 			if pool[child].parent != id or pool[child].value < n.value: return "heap parent/order"
