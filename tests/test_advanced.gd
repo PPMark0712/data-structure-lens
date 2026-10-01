@@ -66,7 +66,7 @@ func _heaps() -> void:
 			reference.sort()
 			check(actual == reference, kind + " multiset preserved")
 	for round in 80:
-		var model := HeapModel.new("heap_sort")
+		var model := HeapModel.new("binary_heap")
 		model.recording = false
 		var values: Array = []
 		for i in rng.randi_range(0, 15): values.append(rng.randi_range(-20, 20))

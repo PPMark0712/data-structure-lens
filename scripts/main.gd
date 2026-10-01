@@ -108,7 +108,7 @@ func _build_ui() -> void:
 	var brand := _label("数据结构实验室", 25)
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(brand)
-	top.add_child(_label("30 个实验  /  小规模 · 看见每一步", 15))
+	top.add_child(_label("%d 个实验  /  小规模 · 看见每一步" % LabCatalog.ENTRIES.size(), 15))
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 16)
@@ -461,7 +461,7 @@ func _pick_node(id: String) -> void:
 		# Numeric labels are keys only in these structures, not interval aggregates.
 		if model.kind in ["array", "dynamic_array", "linked", "doubly", "stack", "queue",
 				"mono_stack", "mono_queue", "hash_linear", "hash_quadratic", "hash_chain",
-				"binary_heap", "heap_sort", "binomial", "fibonacci", "avl", "treap", "splay", "red_black"]:
+				"binary_heap", "binomial", "fibonacci", "avl", "treap", "splay", "red_black"]:
 			if str(node.label).is_valid_int(): fill["value"] = int(node.label)
 		var assigned: Array[String] = []
 		for key in fill:

@@ -4,6 +4,9 @@ extends LabModel
 var items: Array = []
 var sorted_from := -1
 var result := 0
+var max_heap := false
+var source_items: Array = []
+var filling := false
 
 func _init(p_kind: String = "binary_heap") -> void:
 	super(p_kind)
@@ -14,23 +17,35 @@ func _init(p_kind: String = "binary_heap") -> void:
 	recording = true
 
 func operations() -> Array:
-	var ops := [op("build", "构建", [field("values", "整数序列（最多 15 个）", "12,7,24,3,16,9", true)])]
-	if kind == "heap_sort":
-		ops.append(op("sort", "执行堆排序"))
-	else:
-		ops.append(op("insert", "插入", [field("value", "数值", "5")]))
-		ops.append(op("extract", "提取最小值"))
-	return ops
+	var sequence := field("values", "整数序列（最多 15 个）", "12,7,24,3,16,9", true)
+	return [op("build", "构建最小堆", [sequence]),
+		op("insert", "插入", [field("value", "数值", "5")]),
+		op("extract", "提取最小值"), op("sort", "堆排序（升序）", [sequence])]
 
 func _better(a: int, b: int) -> bool:
-	return a > b if kind == "heap_sort" else a < b
+	return a > b if max_heap else a < b
 
 func _build(values: Array) -> void:
-	items.clear()
-	sorted_from = -1
-	for value in values: items.append({"id": uid(), "value": value})
-	record("按输入次序放入完全二叉树", [], 0)
+	max_heap = false
+	var elements: Array = []
+	for value in values: elements.append({"id": uid(), "value": value})
+	_fill_tree(elements)
 	for i in range(items.size() / 2 - 1, -1, -1): _down(i, items.size())
+
+func _fill_tree(elements: Array) -> void:
+	sorted_from = -1
+	source_items = elements.duplicate(true)
+	items.clear()
+	filling = true
+	record("原数组已就绪；从空树开始，按层序逐个填入节点", [], 0)
+	for i in source_items.size():
+		items.append(source_items[i].duplicate())
+		record("将 a[%d]=%d 填入完全二叉树的第 %d 个位置" %
+			[i + 1, items[i].value, i + 1], [str(items[i].id)], 0)
+	filling = false
+	source_items.clear()
+	record("节点已全部填入；现在从最后一个非叶节点开始下沉，建立%s" %
+		("大顶堆" if max_heap else "最小堆"), [], 3)
 
 func _swap(a: int, b: int) -> void:
 	var temp: Dictionary = items[a]
@@ -58,6 +73,8 @@ func perform(action: String, args: Dictionary) -> bool:
 	elif action == "insert":
 		if items.size() >= 15: return fail("最多演示 15 个元素。")
 		begin()
+		sorted_from = -1
+		max_heap = false
 		items.append({"id": uid(), "value": int(args.value)})
 		var i := items.size() - 1
 		record("新元素放在末尾", [str(items[i].id)], 0)
@@ -70,14 +87,23 @@ func perform(action: String, args: Dictionary) -> bool:
 	elif action == "extract":
 		if items.is_empty(): return fail("空堆无法提取。")
 		begin()
+		sorted_from = -1
+		max_heap = false
 		result = items[0].value
 		_swap(0, items.size() - 1)
 		items.pop_back()
 		record("移除最小值 %d；末尾元素补到根" % result, [], 2)
 		_down(0, items.size())
 	else:
+		var elements: Array = items.duplicate(true)
+		if args.has("values"):
+			var values := integers(args.values, 15)
+			if not error.is_empty(): return false
+			elements.clear()
+			for value in values: elements.append({"id": uid(), "value": value})
 		begin()
-		sorted_from = -1
+		max_heap = true
+		_fill_tree(elements)
 		for i in range(items.size() / 2 - 1, -1, -1): _down(i, items.size())
 		for end in range(items.size() - 1, 0, -1):
 			_swap(0, end)
@@ -85,6 +111,8 @@ func perform(action: String, args: Dictionary) -> bool:
 			record("最大值归位到 [%d]，绿色部分已排序" % [end + 1], [str(items[end].id)], 2)
 			_down(0, end)
 		sorted_from = 0
+		# An ascending array also satisfies min-heap order for later insert/extract.
+		max_heap = false
 	record("操作完成%s" % ("：升序排列" if action == "sort" else ""), [], 4)
 	return true
 
@@ -98,8 +126,21 @@ func view() -> Dictionary:
 		var tone := "green" if sorted_from >= 0 and i >= sorted_from else ""
 		nodes.append(vertex(items[i].id, items[i].value, x, 65 + depth * 100, "[%d]" % [i + 1], "circle", tone))
 		if i > 0: edges.append(edge(items[(i - 1) / 2].id, items[i].id))
-		nodes.append(vertex("array" + str(items[i].id), items[i].value, 50 + i * 65, 480, "[%d]" % [i + 1], "box", tone))
-	return {"nodes": nodes, "edges": edges, "stats": "元素 %d · %s" % [items.size(), "大顶堆 → 升序" if kind == "heap_sort" else "最小堆"]}
+	if filling:
+		for i in source_items.size():
+			var item: Dictionary = source_items[i]
+			nodes.append(vertex("array" + str(item.id), item.value, 50 + i * 65, 480, "[%d]" % [i + 1], "box"))
+			if i >= items.size():
+				nodes.append(vertex(item.id, item.value, 50 + i * 65, 480, "", "box"))
+	else:
+		for i in items.size():
+			var tone := "green" if sorted_from >= 0 and i >= sorted_from else ""
+			nodes.append(vertex("array" + str(items[i].id), items[i].value, 50 + i * 65, 480,
+				"[%d]" % [i + 1], "box", tone))
+	var mode := "逐个入树 %d/%d" % [items.size(), source_items.size()] if filling else (
+		"升序排列（可继续最小堆操作）" if sorted_from == 0 else ("大顶堆 → 升序" if max_heap else "最小堆"))
+	return {"nodes": nodes, "edges": edges, "stats": "元素 %d · %s" % [items.size(), mode],
+		"filling": filling, "annotations": [{"pos": Vector2(25, 420), "text": "原数组 · 按下标逐个入树" if filling else "数组存储"}]}
 
 func invariant() -> String:
 	var count := items.size() if sorted_from < 0 else sorted_from

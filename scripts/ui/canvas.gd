@@ -184,12 +184,15 @@ func _draw_vertex(node: Dictionary, position: Vector2, alpha: float, active: boo
 	else:
 		draw_circle(position, 27, fill)
 		draw_arc(position, 27, 0, TAU, 48, outline, 2 if active else 1.5, true)
-	var text := str(node.label)
-	var text_size := 17 if text.length() < 6 else 13
-	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
-	draw_string(font, position + Vector2(-width / 2, 6), text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, ink)
+	var lines: Array = node.get("lines", [str(node.label)])
+	for i in lines.size():
+		var text := str(lines[i])
+		var text_size := 13 if lines.size() > 1 or text.length() >= 6 else 17
+		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
+		var baseline := 5.0 + (i - (lines.size() - 1) / 2.0) * 17
+		draw_string(font, position + Vector2(-width / 2, baseline), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, ink)
 	var detail := str(node.get("detail", ""))
-	width = font.get_string_size(detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	var width := font.get_string_size(detail, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 	draw_string(font, position + Vector2(-width / 2, 46), detail,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(INK, alpha))

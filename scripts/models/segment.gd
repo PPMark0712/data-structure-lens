@@ -9,6 +9,9 @@ var version := 0
 var data: Array = []
 var result := 0
 var domain := 8
+var visited: Array[int] = []
+var used: Array[int] = []
+var selected_range: Array[int] = []
 
 func _init(p_kind: String = "segment") -> void:
 	super(p_kind)
@@ -85,6 +88,9 @@ func _children(id: int) -> void:
 		_apply(node.left, pending)
 		_apply(node.right, pending)
 		node.tag = 0
+		if kind == "segment":
+			for child in [node.left, node.right]:
+				if not visited.has(child): visited.append(child)
 		record("下传 lazy=%d 到两个子区间，清空父节点标记" % pending,
 			[str(id), str(node.left), str(node.right)], 2)
 
@@ -105,6 +111,10 @@ func perform(action: String, args: Dictionary) -> bool:
 	if kind == "persistent_segment" and action == "add" and roots.size() >= 6:
 		return fail("最多演示 6 个版本；可恢复默认后重新实验。")
 	begin()
+	if kind == "segment":
+		visited.clear()
+		used.clear()
+		selected_range.assign([l, r])
 	if action == "add":
 		var delta := int(args.value)
 		if kind == "persistent_segment":
@@ -117,8 +127,10 @@ func perform(action: String, args: Dictionary) -> bool:
 			record("从 V%d 创建 V%d；只复制根到叶路径" % [previous_version + 1, version + 1], [str(root)], 4)
 		else:
 			_add(root, l, r, delta)
-			for i in range(l, r + 1): data[i - 1] += delta
-			record("更新 [%d,%d] 完成；根区间和 = %d" % [l, r, _sum(root)], [str(root)], 4)
+			if kind != "segment":
+				for i in range(l, r + 1): data[i - 1] += delta
+			record("更新 [%d,%d] 完成；根区间和 = %d" % [l, r, _sum(root)],
+				[] if kind == "segment" else [str(root)], 4)
 	else:
 		result = _query(root, l, r)
 		record("区间 [%d,%d] 的和 = %d" % [l, r, result], [], 4)
@@ -126,10 +138,14 @@ func perform(action: String, args: Dictionary) -> bool:
 
 func _add(id: int, l: int, r: int, delta: int) -> void:
 	var node: Dictionary = pool[id]
+	if kind == "segment" and not visited.has(id): visited.append(id)
 	calls.append("add([%d,%d], Δ=%d)" % [node.l, node.r, delta])
 	record("访问区间 [%d,%d]" % [node.l, node.r], [str(id)], 0)
 	if l <= node.l and node.r <= r:
 		_apply(id, delta)
+		if kind == "segment":
+			used.append(id)
+			for i in range(node.l, node.r + 1): data[i - 1] += delta
 		record("完全覆盖：sum += %d × %d，lazy += %d" % [delta, node.r - node.l + 1, delta], [str(id)], 1)
 	else:
 		if kind == "dynamic_segment":
@@ -170,11 +186,13 @@ func _query(id: int, l: int, r: int) -> int:
 	if id == 0: return 0
 	var node: Dictionary = pool[id]
 	if r < node.l or l > node.r: return 0
+	if kind == "segment" and not visited.has(id): visited.append(id)
 	calls.append("query([%d,%d])" % [node.l, node.r])
 	record("查询访问 [%d,%d]" % [node.l, node.r], [str(id)], 0)
 	var answer := 0
 	if l <= node.l and node.r <= r:
 		answer = node.sum
+		if kind == "segment": used.append(id)
 		record("完全覆盖，直接返回 sum=%d" % answer, [str(id)], 1)
 	else:
 		if kind == "segment": _children(id)
@@ -184,6 +202,7 @@ func _query(id: int, l: int, r: int) -> int:
 	return answer
 
 func view() -> Dictionary:
+	if kind == "segment": return _interval_view()
 	var nodes: Array = []
 	var edges: Array = []
 	var levels := {}
@@ -215,6 +234,38 @@ func view() -> Dictionary:
 	return {"nodes": nodes, "edges": edges, "stats":
 		"范围 [1,%d]  ·  已分配 %d 个节点%s" % [domain, pool.size(),
 		"  ·  当前 V%d / 共 %d 个版本" % [version + 1, roots.size()] if kind == "persistent_segment" else ""]}
+
+func _interval_view() -> Dictionary:
+	var nodes: Array = []
+	var annotations: Array = [{"pos": Vector2(40, 30), "text": "原数组 · 当前数值"}]
+	for i in domain:
+		var tone := "green" if not selected_range.is_empty() and i + 1 >= selected_range[0] and i + 1 <= selected_range[1] else ""
+		var cell := vertex("a%d" % [i + 1], data[i], 40 + (i + 0.5) * 100, 75, "[%d]" % [i + 1], "box", tone)
+		cell["size"] = Vector2(100, 40)
+		nodes.append(cell)
+	for id in pool:
+		var n: Dictionary = pool[id]
+		var length: int = n.r - n.l + 1
+		var depth := 0
+		var span := domain
+		while span > length:
+			span >>= 1
+			depth += 1
+		var tone := "green" if used.has(id) else ("blue" if visited.has(id) else "")
+		var bar := vertex(id, n.sum, 40 + (n.l - 1 + length / 2.0) * 100,
+			190 + depth * 100, "", "box", tone)
+		bar["size"] = Vector2(length * 100, 64)
+		bar["lines"] = ["[%d,%d]" % [n.l, n.r], "sum=%d" % n.sum, "lazy=%d" % n.tag]
+		bar["range"] = [n.l, n.r]
+		nodes.append(bar)
+	annotations.append({"pos": Vector2(40, 565), "text": "浅蓝：递归访问 / 下传    绿色：直接更新或取和的区间、原数组目标范围"})
+	var pieces: Array[String] = []
+	for id in used: pieces.append("[%d,%d]" % [pool[id].l, pool[id].r])
+	if not pieces.is_empty():
+		annotations.append({"pos": Vector2(40, 595), "text": "本次区间拆分：" + " + ".join(pieces) +
+			"  →  原数组 [%d,%d]" % [selected_range[0], selected_range[1]]})
+	return {"nodes": nodes, "edges": [], "annotations": annotations,
+		"stats": "范围 [1,%d]  ·  sum=区间和  ·  lazy=待下传增量" % domain}
 
 func invariant() -> String:
 	for id in pool:

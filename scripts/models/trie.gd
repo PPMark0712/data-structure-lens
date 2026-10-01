@@ -170,6 +170,7 @@ func perform(action: String, args: Dictionary) -> bool:
 func view() -> Dictionary:
 	var nodes: Array = []
 	var edges: Array = []
+	var annotations: Array = []
 	var levels := {}
 	for id in pool:
 		var depth: int = pool[id].depth
@@ -180,11 +181,14 @@ func view() -> Dictionary:
 			var id: int = levels[depth][i]
 			var n: Dictionary = pool[id]
 			var v := roots.find(id)
-			var label: String = n.letter if depth else ("V%d" % [v + 1] if v >= 0 and kind == "persistent_trie" else "根")
-			nodes.append(vertex(id, label, 70 + i * 100, 60 + depth * 105,
-				"#%d · %d/%d" % [id, n.count, n.end], "circle", "green" if id == root or n.end > 0 else ""))
+			var node := vertex(id, "#%d" % id, 70 + i * 100, 60 + depth * 105,
+				"", "circle", "green" if id == root or n.end > 0 else "")
+			node["lines"] = ["#%d" % id, "%d/%d" % [n.count, n.end]]
+			nodes.append(node)
+			if v >= 0 and kind == "persistent_trie":
+				annotations.append({"pos": node.pos + Vector2(-15, -40), "text": "V%d" % [v + 1]})
 			for letter in n.children: edges.append(edge(id, n.children[letter], letter))
-	return {"nodes": nodes, "edges": edges, "stats":
+	return {"nodes": nodes, "edges": edges, "annotations": annotations, "stats":
 		"键 %d · 节点 %d · 计数=经过/终止%s" % [values.size(), pool.size(),
 		" · V%d / %d 版本" % [version + 1, roots.size()] if kind == "persistent_trie" else ""]}
 

@@ -100,15 +100,31 @@ func _run() -> void:
 		var right: Vector2 = (node.pos + node.size / 2) * ui.canvas.zoom + ui.canvas.offset
 		check(Rect2(Vector2.ZERO, ui.canvas.size).has_point(left) and
 			Rect2(Vector2.ZERO, ui.canvas.size).has_point(right), "ST fit contains entire bar")
-	ui._select(LabCatalog.ENTRIES[21]) # Fibonacci
+	ui._select(LabCatalog.ENTRIES[14]) # Lazy interval/source picking and retained highlights.
+	ui._pick_node("a2")
+	ui._pick_node("a6")
+	check(ui.editors.l.text == "2" and ui.editors.r.text == "6" and ui.editors.value.text == "5",
+		"Lazy source cells select endpoints without changing delta")
+	ui.execute_button.pressed.emit()
+	ui._go(ui.trace.size() - 1)
+	var retained: Dictionary = ui.model.view().duplicate(true)
+	var interval: Dictionary = retained.nodes.filter(func(n): return n.get("range", []) == [3, 4])[0]
+	ui._pick_node(interval.id)
+	check(ui.editors.l.text == "3" and ui.editors.r.text == "4", "Lazy bar selects covered interval")
+	ui._choose_operation(1)
+	ui.execute_button.pressed.emit()
+	ui._go(ui.trace.size() - 1)
+	ui._undo()
+	check(ui.model.view() == retained, "undo restores previous range highlights and source array")
+	ui._select(LabCatalog.ENTRIES[20]) # Fibonacci
 	ui._choose_operation(2)
 	ui._pick_node("8")
 	check(ui.editors.id.text == "8", "heap node ID picking")
-	ui._select(LabCatalog.ENTRIES[29]) # LCT
+	ui._select(LabCatalog.ENTRIES[28]) # LCT
 	ui._pick_node("v2")
 	ui._pick_node("a5")
 	check(ui.editors.u.text == "2" and ui.editors.v.text == "5", "LCT endpoints alternate")
-	ui._select(LabCatalog.ENTRIES[26]) # Treap deterministic RNG through undo
+	ui._select(LabCatalog.ENTRIES[25]) # Treap deterministic RNG through undo
 	ui.execute_button.pressed.emit()
 	var first: Dictionary = ui.model.view().duplicate(true)
 	ui._undo()

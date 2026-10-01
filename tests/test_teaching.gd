@@ -18,6 +18,9 @@ func _run() -> void:
 	_linked_heads()
 	_monotonic()
 	_sparse_table()
+	_segment_intervals()
+	_heap_filling()
+	_trie_labels()
 	_splay()
 	_boundaries()
 	print("Teaching regressions: %d checks; %d failures." % [checks, failures])
@@ -206,6 +209,75 @@ func _sparse_table() -> void:
 				Rect2(other.pos - other.size / 2, other.size)), "bars in same lane do not overlap")
 	check(lanes[0].size() == 1 and lanes[1].size() == 2 and lanes[2].size() == 4, "ST uses 1/2/4 staggered lanes")
 	check(not model.perform("query", {"l": 0, "r": 8}), "ST rejects zero index")
+
+func _segment_intervals() -> void:
+	var model := SegmentModel.new()
+	for node in model.view().nodes:
+		check(node.shape == "box", "lazy segment uses rectangles")
+		if node.has("range"):
+			check(node.size.x == (node.range[1] - node.range[0] + 1) * 100, "interval width")
+			check(node.pos.x - node.size.x / 2 == 40 + (node.range[0] - 1) * 100, "aligned left boundary")
+			check(node.pos.x + node.size.x / 2 == 40 + node.range[1] * 100, "aligned right boundary")
+	check(model.perform("add", {"l": 2, "r": 6, "value": 5}), "range add")
+	check(model.data == [3, 6, 9, 6, 10, 14, 2, 6], "source array updates exactly once")
+	check(model.perform("query", {"l": 2, "r": 6}) and model.result == 45, "range sum after add")
+	var final: Dictionary = model.frames.back()
+	var pieces: Array = []
+	for node in final.nodes:
+		if node.has("range") and node.tone == "green": pieces.append(node.range)
+	check(pieces == [[2, 2], [3, 4], [5, 6]], "final frame retains exact disjoint cover")
+	check(final.nodes.any(func(n): return n.tone == "blue"), "visited ancestors remain blue")
+	check(final.annotations.back().text.contains("[2,2] + [3,4] + [5,6]"), "persistent decomposition explanation")
+	check(model.perform("add", {"l": 1, "r": 8, "value": -2}), "whole range lazy update")
+	check(model.used == [model.root], "new operation clears previous cover")
+	var expected := model.data.duplicate()
+	check(model.perform("query", {"l": 3, "r": 5}) and model.result == 19, "subset query pushes pending lazy")
+	check(model.data == expected and model.invariant().is_empty(), "lazy push preserves source data and sums")
+	for kind in ["dynamic_segment", "persistent_segment"]:
+		var other := SegmentModel.new(kind)
+		check(other.view().nodes.all(func(n): return n.shape == "circle"), "other segment trees retain circles")
+		check(not other.view().edges.is_empty(), "other segment trees retain edges")
+
+func _heap_filling() -> void:
+	for action in ["build", "sort"]:
+		var model := HeapModel.new()
+		check(model.perform(action, {"values": "4,-2,4,9,0"}), "heap accepts duplicate and negative input")
+		var fill_frames: Array = model.frames.filter(func(f): return f.get("filling", false))
+		check(fill_frames.size() == 6, "empty tree plus one frame per inserted element")
+		var original_ids := _positions(fill_frames[0]).keys()
+		for i in fill_frames.size():
+			var frame: Dictionary = fill_frames[i]
+			var tree_nodes: Array = frame.nodes.filter(func(n): return n.shape == "circle")
+			check(tree_nodes.size() == i, "complete tree grows one node at a time")
+			check(tree_nodes.map(func(n): return int(n.label)) == [4, -2, 4, 9, 0].slice(0, i),
+				"input order preserved until filling completes")
+			check(_positions(frame).keys() == original_ids, "same IDs move from source to tree")
+			check(frame.nodes.filter(func(n): return str(n.id).begins_with("array")).size() == 5,
+				"entire source array remains visible")
+		check(model.invariant().is_empty(), "heap invariant after build or sort")
+		if action == "sort":
+			check(model.items.map(func(n): return n.value) == [-2, 0, 4, 4, 9], "ascending heap sort")
+			check(model.perform("insert", {"value": -5}) and model.invariant().is_empty(), "insert after sort")
+			check(model.perform("extract", {}) and model.result == -5 and model.invariant().is_empty(),
+				"extract after sort and insert")
+			check(model.perform("sort", {}) and model.items.map(func(n): return n.value) == [-2, 0, 4, 4, 9],
+				"repeat sort preserves multiset")
+		while not model.items.is_empty(): check(model.perform("extract", {}), "extract to empty")
+		check(model.perform("sort", {}) and model.items.is_empty(), "sort empty current heap")
+
+func _trie_labels() -> void:
+	for kind in ["trie", "trie01", "persistent_trie"]:
+		var model := TrieModel.new(kind)
+		check(model.perform("insert", {"value": "cat" if kind == "trie" else 5}), "Trie repeated key")
+		for node in model.view().nodes:
+			var id := int(node.id)
+			check(node.detail.is_empty() and node.lines == ["#%d" % id,
+				"%d/%d" % [model.pool[id].count, model.pool[id].end]], "node contains only index and counts")
+		for link in model.view().edges:
+			check(link.label.length() == 1, "edge contains a single character")
+		check(model.invariant().is_empty(), "Trie counts preserved")
+		if kind == "persistent_trie":
+			check(model.view().annotations.size() == 2, "version labels remain outside roots")
 
 func _splay() -> void:
 	# Golden trees include all seven nodes, so lost/reversed middle subtrees fail.
