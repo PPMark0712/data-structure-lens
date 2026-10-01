@@ -8,6 +8,7 @@ var window := 3
 var head := 0
 var tail := 0
 var visual_slots: Dictionary = {}
+var migration: Dictionary = {}
 
 func _init(p_kind: String = "array") -> void:
 	super(p_kind)
@@ -18,6 +19,8 @@ func _init(p_kind: String = "array") -> void:
 		stream_index += 1
 	if kind == "dynamic_array":
 		capacity = 4
+		code.assign(["检查位置和容量；满时申请两倍内存", "定位元素 / 读取旧内存",
+			"逐个向下复制 / 在数组内移动元素", "切换内存、释放旧块，更新长度"])
 
 func operations() -> Array:
 	var value := field("value", "数值", "9")
@@ -152,13 +155,57 @@ func _grow() -> void:
 	if kind != "dynamic_array" or items.size() < capacity:
 		return
 	var old := capacity
-	capacity *= 2
-	record("容量不足：申请 %d → %d 个槽位" % [old, capacity], [], 0)
-	for item in items:
-		record("将元素 %s 复制到新存储区" % item.value, [str(item.id)], 2)
-	record("复制完成，释放旧存储区；单次扩容 O(n)，append 均摊 O(1)", [], 3)
+	migration = {"old_capacity": old, "new_capacity": old * 2, "copied": 0, "phase": "lift"}
+	record("容量 %d 已满：将旧数组上移，准备迁移内存" % old, [], 0)
+	migration.phase = "allocate"
+	record("在下方申请 %d 个槽位的新内存，旧内存暂时保留" % [old * 2], [], 0)
+	for i in items.size():
+		record("读取旧内存 [%d]=%s，准备向下复制" % [i + 1, items[i].value], [str(items[i].id)], 1)
+		migration.copied = i + 1
+		migration.phase = "copy"
+		record("将 %s 从旧内存 [%d] 向下复制到新内存 [%d]（%d/%d）" %
+			[items[i].value, i + 1, i + 1, i + 1, items.size()], [str(items[i].id)], 2)
+	capacity = old * 2
+	migration.phase = "switch"
+	record("全部元素已复制，数组指针切换到新内存，容量更新为 %d" % capacity, [], 3)
+	migration.phase = "release"
+	record("释放上方旧内存；新内存中的元素保持原顺序", [], 3)
+	migration.clear()
+	record("内存迁移完成；单次扩容 O(n)，append 均摊 O(1)", [], 3)
+
+func _migration_view() -> Dictionary:
+	var nodes: Array = []
+	var annotations: Array = []
+	var allocated: bool = migration.phase != "lift"
+	var released: bool = migration.phase == "release"
+	if not released:
+		annotations.append({"pos": Vector2(46, 40),
+			"text": "旧内存 · 容量 %d%s" % [migration.old_capacity,
+				" · 待释放" if migration.phase == "switch" else " · 保留原数据"]})
+	for i in items.size():
+		var item := items[i]
+		var x := 75.0 + i * 78
+		# The stable element ID travels down. Its source copy remains until release.
+		if allocated and not released:
+			nodes.append(vertex("old_memory_%d" % item.id, item.value, x, 100,
+				"[%d]" % [i + 1], "box"))
+		nodes.append(vertex(item.id, item.value, x, 320 if i < migration.copied else 100,
+			"[%d]" % [i + 1], "box"))
+	if allocated:
+		annotations.append({"pos": Vector2(46, 260),
+			"text": "新内存 · 容量 %d · %s" % [migration.new_capacity,
+				"当前数组" if migration.phase in ["switch", "release"] else
+				"已复制 %d/%d" % [migration.copied, items.size()]]})
+		for i in range(migration.copied, migration.new_capacity):
+			nodes.append(vertex("empty%d" % i, "·", 75 + i * 78, 320,
+				"[%d]" % [i + 1], "box", "muted"))
+	return {"nodes": nodes, "edges": [], "annotations": annotations,
+		"memory": migration.duplicate(), "stats": "长度 %d  /  容量 %d → %d  ·  内存迁移" %
+			[items.size(), migration.old_capacity, migration.new_capacity]}
 
 func view() -> Dictionary:
+	if not migration.is_empty():
+		return _migration_view()
 	var nodes: Array = []
 	var edges: Array = []
 	var linked := kind in ["linked", "doubly"]

@@ -14,6 +14,7 @@ func check(ok: bool, message: String) -> void:
 
 func _run() -> void:
 	_array_moves()
+	_array_migration()
 	_linked_heads()
 	_monotonic()
 	_sparse_table()
@@ -40,7 +41,7 @@ func _array_moves() -> void:
 				var now := _positions(frame)
 				var moved: Array = []
 				for id in previous:
-					if now.has(id) and now[id] != previous[id]:
+					if now.has(id) and now[id].x != previous[id].x:
 						moved.append(id)
 						check(now[id] - previous[id] == Vector2(78, 0), "one slot right")
 				check(moved.size() <= 1, "only one element moves in each frame")
@@ -51,6 +52,70 @@ func _array_moves() -> void:
 			check(moved_ids == expected, "right shifts start at tail and end at insertion slot")
 			check(model.items[index - 1].value == 99, "new value occupies requested position")
 			check(model.visual_slots.is_empty(), "transient positions cleared")
+
+func _array_migration() -> void:
+	var model := LinearModel.new("dynamic_array")
+	check(model.perform("build", {"values": "4,4,-2,7,9,1,3,6,8"}), "build through two expansions")
+	var expansions: Array = []
+	var previous: Dictionary = {}
+	var last_copied := 0
+	for frame in model.frames:
+		var memory: Dictionary = frame.get("memory", {})
+		if memory.is_empty():
+			previous = frame
+			continue
+		var original := _positions(frame)
+		if memory.phase == "lift":
+			expansions.append(memory.old_capacity)
+			last_copied = 0
+			var before := _positions(previous)
+			for id in original:
+				check(original[id] - before[id] == Vector2(0, -100), "old array lifts as a block")
+		check(memory.new_capacity == memory.old_capacity * 2, "new memory doubles capacity")
+		var old_nodes: Array = frame.nodes.filter(func(n): return str(n.id).begins_with("old_memory_"))
+		var lower: Array = frame.nodes.filter(func(n): return n.pos.y == 320)
+		if memory.phase == "lift":
+			check(lower.is_empty(), "old array lifts before allocation")
+		else:
+			check(lower.size() == memory.new_capacity, "new allocation has twice as many slots")
+			check(old_nodes.size() == (0 if memory.phase == "release" else memory.old_capacity),
+				"source memory stays until explicit release")
+			var copies: Array = lower.filter(func(n): return str(n.id).is_valid_int())
+			copies.sort_custom(func(a, b): return a.pos.x < b.pos.x)
+			check(copies.size() == memory.copied, "copied prefix fills destination")
+			for i in copies.size():
+				check(copies[i].label == str([4, 4, -2, 7, 9, 1, 3, 6][i]), "copy preserves values and order")
+				check(copies[i].pos.x == 75 + i * 78, "copy stays in same column")
+			if memory.copied > last_copied:
+				check(memory.copied == last_copied + 1, "one copy per frame")
+				var before := _positions(previous)
+				var moved := 0
+				for id in original:
+					if original[id] != before[id]:
+						moved += 1
+						check(original[id] - before[id] == Vector2(0, 220), "element travels downward")
+				check(moved == 1, "only current element travels during copy")
+			if memory.phase in ["switch", "release"]:
+				check(memory.copied == memory.old_capacity, "switch/release only after complete copy")
+			for old in old_nodes:
+				check(old.pos.y == 100, "old copy remains in upper allocation")
+		last_copied = memory.copied
+		previous = frame
+	check(expansions == [4, 8], "construction animates 4 to 8 and 8 to 16")
+	check(model.capacity == 16 and model.migration.is_empty(), "migration finishes without transient state")
+	check(model.items.map(func(item): return item.value) == [4, 4, -2, 7, 9, 1, 3, 6, 8],
+		"expansion preserves logical contents")
+	check(model.perform("push", {"value": 10}), "append within available capacity")
+	check(model.frames.all(func(frame): return not frame.has("memory")), "spare capacity skips migration")
+	for index in [1, 3, 5]:
+		model = LinearModel.new("dynamic_array")
+		var before := model.items.map(func(item): return item.id)
+		check(model.perform("insert", {"index": index, "value": 99}), "insert following migration")
+		var after := model.items.map(func(item): return item.id)
+		after.remove_at(index - 1)
+		check(after == before, "stable element IDs survive copying and insertion")
+		check(model.items[index - 1].value == 99 and model.invariant().is_empty(),
+			"insertion uses expanded allocation")
 
 func _linked_heads() -> void:
 	for kind in ["linked", "doubly"]:

@@ -13,9 +13,12 @@ static func describe(kind: String, action: String) -> String:
 				"update": ("沿 next 走到指定节点" if linked else "按下标定位元素") + "，将原值替换为新值，长度不变。",
 				"get": ("从 HEAD 沿 next 访问第 i 个节点，返回数值，耗时 O(n)。" if linked else "直接读取第 i 个位置的值，耗时 O(1)。"),
 				"find": "从位置 1 开始逐个比较，返回第一个匹配值的位置；找不到则给出提示。",
-				"push": "把新值追加到末尾。容量不足时申请两倍空间并逐个复制；追加的均摊耗时为 O(1)。",
+				"push": "把新值追加到末尾。容量不足时旧数组上移，下方申请两倍内存，逐个向下复制，最后释放旧内存。追加均摊 O(1)。",
 				"build": "清空当前结构，按输入顺序加入各元素。" + ("同时建立 next / prev 连接。" if linked else "静态数组最多 8 项；动态数组容量不足时倍增。")
 			}
+			if kind == "dynamic_array":
+				notes.insert = "容量不足时先申请两倍内存，向下逐个复制并释放旧内存；再将插入点后的元素逐个右移，写入新值。位置 1 是头插，n+1 是尾插。"
+				notes.build = "清空数组并按输入顺序加入元素；容量不足时，旧数组上移，下方申请两倍内存，逐个复制完成后释放旧内存。"
 		"stack", "queue":
 			var stack := kind == "stack"
 			notes = {
