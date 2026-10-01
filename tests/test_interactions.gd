@@ -141,6 +141,21 @@ func _run() -> void:
 	ui._pick_node("v2")
 	ui._pick_node("a5")
 	check(ui.editors.u.text == "2" and ui.editors.v.text == "5", "LCT endpoints alternate")
+	ui._select(LabCatalog.ENTRIES[29]) # Disjoint set
+	ui._choose_operation(1)
+	ui._pick_node("d1")
+	ui._pick_node("d5")
+	check(ui.editors.a.text == "1" and ui.editors.b.text == "5",
+		"disjoint-set endpoints alternate")
+	var disjoint_before: Dictionary = ui.model.view().duplicate(true)
+	ui.execute_button.pressed.emit()
+	ui._go(ui.trace.size() - 1)
+	check(ui.model.parent[3] == 6, "disjoint-set form joins representatives")
+	ui._undo()
+	check(ui.model.view() == disjoint_before, "disjoint-set undo restores exact forest")
+	ui._choose_operation(0)
+	ui._pick_node("d3")
+	check(ui.editors.x.text == "3", "disjoint-set node fills find argument")
 	ui._select(LabCatalog.ENTRIES[25]) # Treap deterministic RNG through undo
 	ui.execute_button.pressed.emit()
 	var first: Dictionary = ui.model.view().duplicate(true)

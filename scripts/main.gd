@@ -464,6 +464,13 @@ func _pick_node(id: String) -> void:
 			if editors.has("u"):
 				fill["v" if pick_second else "u"] = int(id.substr(1))
 				pick_second = not pick_second
+		if model.kind == "disjoint_set" and id.begins_with("d"):
+			var element := int(id.substr(1))
+			if editors.has("x"):
+				fill["x"] = element
+			elif editors.has("a"):
+				fill["b" if pick_second else "a"] = element
+				pick_second = not pick_second
 		# Numeric labels are keys only in these structures, not interval aggregates.
 		if model.kind in ["array", "dynamic_array", "linked", "doubly", "stack", "queue",
 				"mono_stack", "mono_queue", "hash_linear", "hash_quadratic", "hash_chain",

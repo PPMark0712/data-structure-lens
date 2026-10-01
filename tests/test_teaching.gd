@@ -19,6 +19,7 @@ func _run() -> void:
 	_linked_heads()
 	_stack_container()
 	_hash_layout()
+	_disjoint_set()
 	_monotonic()
 	_sparse_table()
 	_segment_intervals()
@@ -86,6 +87,59 @@ func _hash_layout() -> void:
 					"hash chains extend downward from their bucket")
 		check(model.perform("insert", {"value": 45}), kind + " insert for index narration")
 		check(model.frames[1].message == "h(45) = 1", kind + " hash narration uses 0-based index")
+
+func _disjoint_set() -> void:
+	var model := DisjointSetModel.new()
+	check(model.parent == [0, 2, 3, 3, 5, 6, 6, 8, 8, 10, 10],
+		"disjoint set default forest uses short paths worth compressing")
+	check(DisjointSetModel.HORIZONTAL_GAP == 112.0 and DisjointSetModel.ROOT_GAP == 56.0,
+		"disjoint set reserves readable horizontal spacing")
+	var initial := model.view()
+	check(initial.nodes.size() == 10 and initial.edges.size() == 6,
+		"disjoint set forest renders every element and non-root parent")
+	check(initial.nodes.filter(func(node): return node.tone == "green").size() == 4,
+		"disjoint set roots are visibly distinct")
+	for node in initial.nodes:
+		check(node.detail.is_empty() and node.lines.size() == 2,
+			"disjoint set keeps parent labels inside nodes")
+	check(initial.edges.all(func(link): return link.label.is_empty()),
+		"disjoint set arrows do not duplicate parent labels")
+	check(model.code[0] ==
+		"int find(int x) { return x == fa[x] ? x : fa[x] = find(fa[x]); }",
+		"disjoint set presents the requested path-compression find")
+	check(model.perform("build", {"size": 6}), "prepare a long path for compression")
+	model.parent[1] = 2
+	model.parent[2] = 3
+	model.parent[3] = 4
+	check(model.perform("find", {"x": 1}), "disjoint set find")
+	check(model.result == 4 and model.parent.slice(1, 5) == [4, 4, 4, 4],
+		"find compresses the full path to its representative")
+	var changed: Array = []
+	var previous: Array = model.frames[0].parents
+	for frame in model.frames.slice(1):
+		var current: Array = frame.parents
+		var differences: Array = []
+		for i in range(1, current.size()):
+			if current[i] != previous[i]:
+				differences.append([i, current[i]])
+		check(differences.size() <= 1, "path compression rewrites one fa entry per frame")
+		changed.append_array(differences)
+		previous = current
+	check(changed == [[2, 4], [1, 4]], "path compression rewrites parents during recursion unwind")
+	var deepest: Array = model.frames.map(func(frame): return frame.calls.size())
+	check(deepest.max() == 4, "find exposes the complete recursive call stack")
+	model = DisjointSetModel.new()
+	check(model.perform("union", {"a": 1, "b": 8}), "disjoint set union")
+	check(model.parent[3] == 8, "union attaches find(a) directly below find(b)")
+	check(model.frames[-1].message.contains("不使用按秩或按大小合并"),
+		"union animation states that no rank or size heuristic is used")
+	check(model.perform("connected", {"a": 1, "b": 8}) and model.connected_result,
+		"connected uses compressed representatives")
+	check(model.perform("build", {"size": 12}), "disjoint set rebuild")
+	for i in range(1, 13):
+		check(model.parent[i] == i, "rebuild starts each element as its own representative")
+	check(not model.perform("find", {"x": 0}), "disjoint set rejects zero")
+	check(not model.perform("build", {"size": 13}), "disjoint set enforces teaching limit")
 
 func _array_moves() -> void:
 	for kind in ["array", "dynamic_array"]:

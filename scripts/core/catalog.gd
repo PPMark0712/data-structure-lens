@@ -31,6 +31,7 @@ const ENTRIES := [
 	["平衡树", "splay", "Splay 树", "Zig、Zig-Zig 与 Zig-Zag 伸展", "balanced"],
 	["平衡树", "red_black", "红黑树", "颜色约束、旋转与插入删除修复", "red_black"],
 	["动态树", "lct", "Link-Cut Tree", "动态森林连边 / 断边与路径聚合", "lct"],
+	["集合结构", "disjoint_set", "并查集", "路径压缩 find；不使用按秩或按大小合并", "disjoint_set"],
 ]
 
 static func create(entry: Array) -> LabModel:

@@ -112,6 +112,13 @@ static func describe(kind: String, action: String) -> String:
 				"build": "清空当前树，按输入顺序逐个插入互异键。" + repair
 			}
 			if kind == "splay": notes.delete = "把目标伸展到根并移除；将左子树最大节点伸展为新根，再接上右子树。"
+		"disjoint_set":
+			notes = {
+				"find": "递归沿 fa 指针找到代表元；回溯时执行 fa[x] = find(fa[x])，把路径上的元素逐个直接连接到根。",
+				"union": "分别路径压缩并查找 a、b 的代表元，再令 fa[find(a)] = find(b)。本实验不使用按秩或按大小合并。",
+				"connected": "分别执行带路径压缩的 find；两个代表元相同即连通，否则属于不同集合。",
+				"build": "创建 1–12 个元素，令每个 fa[i] = i；此时每个元素各自构成一个集合。"
+			}
 		"lct":
 			notes = {
 				"link": "将 u 换根后，若 u、v 不连通则建立路径父亲连接；已连通时拒绝，避免形成环。",

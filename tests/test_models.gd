@@ -42,6 +42,7 @@ func _run() -> void:
 	_frame_references()
 	_random_linear()
 	_random_hash()
+	_random_disjoint_set()
 	_random_ranges()
 	_random_segments()
 	print("Tested %d modules; %d checks; %d failures." % [count, checks, failures.size()])
@@ -111,6 +112,40 @@ func _random_hash() -> void:
 			for key in range(-15, 16):
 				check(model.contains(key) == reference.has(key), kind + " membership")
 			check(model.invariant().is_empty(), kind + " invariant")
+
+func _disjoint_root(parents: Array[int], x: int) -> int:
+	while parents[x] != x:
+		x = parents[x]
+	return x
+
+func _random_disjoint_set() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 744
+	var model := DisjointSetModel.new()
+	model.recording = false
+	check(model.perform("build", {"size": 12}), "disjoint set build")
+	var groups: Array[int] = []
+	for i in range(13):
+		groups.append(i)
+	for round in 120:
+		var a := rng.randi_range(1, 12)
+		var b := rng.randi_range(1, 12)
+		if rng.randf() < 0.6:
+			var from := groups[a]
+			var to := groups[b]
+			check(model.perform("union", {"a": a, "b": b}), "disjoint set union")
+			for i in range(1, 13):
+				if groups[i] == from:
+					groups[i] = to
+		else:
+			check(model.perform("connected", {"a": a, "b": b}), "disjoint set connected")
+			check(model.connected_result == (groups[a] == groups[b]),
+				"disjoint set connectivity matches independent partition")
+		check(model.invariant().is_empty(), "disjoint set invariant")
+		for x in range(1, 13):
+			for y in range(1, 13):
+				check((_disjoint_root(model.parent, x) == _disjoint_root(model.parent, y)) ==
+					(groups[x] == groups[y]), "disjoint set differential partition")
 
 func _random_ranges() -> void:
 	if not ResourceLoader.exists("res://scripts/models/ranges.gd"): return
