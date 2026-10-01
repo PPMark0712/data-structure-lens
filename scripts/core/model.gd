@@ -2,6 +2,8 @@ class_name LabModel
 extends RefCounted
 ## Pure algorithm model. Frames contain only value data, never scene objects.
 
+const OperationNotes := preload("res://scripts/core/operation_notes.gd")
+
 var kind: String
 var frames: Array[Dictionary] = []
 var error := ""
@@ -49,7 +51,7 @@ func perform(_op: String, _args: Dictionary) -> bool:
 	return fail("尚未定义此操作")
 
 func op(id: String, title: String, fields: Array = []) -> Dictionary:
-	return {"id": id, "title": title, "fields": fields}
+	return {"id": id, "title": title, "fields": fields, "note": OperationNotes.describe(kind, id)}
 
 func field(key: String, title: String, initial: String, text: bool = false) -> Dictionary:
 	return {"key": key, "title": title, "initial": initial, "text": text}
@@ -83,7 +85,7 @@ func integers(text: String, limit: int = 16) -> Array:
 func array_view(values: Array, y: float = 130, prefix: String = "a") -> Dictionary:
 	var nodes: Array = []
 	for i in values.size():
-		nodes.append(vertex(prefix + str(i), values[i], 70 + i * 76, y, "[%d]" % i, "box"))
+		nodes.append(vertex(prefix + str(i), values[i], 70 + i * 76, y, "[%d]" % [i + 1], "box"))
 	return {"nodes": nodes, "edges": [], "stats": "元素数 %d" % values.size()}
 
 func invariant() -> String:

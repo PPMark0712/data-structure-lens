@@ -23,7 +23,7 @@ func operations() -> Array:
 			op("query", "矩形求和", [field("x1", "起始行", "1"), field("y1", "起始列", "1"),
 				field("x2", "结束行", "3"), field("y2", "结束列", "4")])]
 	if kind == "sparse_table":
-		return [op("query", "区间最小值", [field("l", "左端点（0 起）", "1"), field("r", "右端点（含）", "6")]),
+		return [op("query", "区间最小值", [field("l", "左端点（1 起）", "1"), field("r", "右端点（含）", "6")]),
 			op("build", "重新预处理", [field("values", "8 个整数", "3,1,4,1,5,9,2,6", true)])]
 	return [op("add", "单点增加", [field("index", "下标（1–8）", "3"), field("value", "增量", "5")]),
 		op("query", "区间求和", [field("l", "左端点（1 起）", "2"), field("r", "右端点（含）", "6")]),
@@ -58,7 +58,7 @@ func _rebuild() -> void:
 		for k in range(1, 4):
 			for i in range(9 - (1 << k)):
 				table[k][i] = mini(table[k - 1][i], table[k - 1][i + (1 << (k - 1))])
-				record("合并两个长度 %d 的区间，得到 [%d,%d]" % [1 << (k - 1), i, i + (1 << k) - 1],
+				record("合并两个长度 %d 的区间，得到 [%d,%d]" % [1 << (k - 1), i + 1, i + (1 << k)],
 					["s%d_%d" % [k, i], "s%d_%d" % [k - 1, i], "s%d_%d" % [k - 1, i + (1 << (k - 1))]], 1)
 	else:
 		bit.resize(9)
@@ -108,11 +108,12 @@ func perform(action: String, args: Dictionary) -> bool:
 	else:
 		var l := int(args.l)
 		var r := int(args.r)
-		var origin := 0 if kind == "sparse_table" else 1
-		if l < origin or r > 7 + origin or l > r:
-			return fail("区间必须满足 %d ≤ l ≤ r ≤ %d。" % [origin, 7 + origin])
+		if l < 1 or r > 8 or l > r:
+			return fail("区间必须满足 1 ≤ l ≤ r ≤ 8。")
 		begin()
 		if kind == "sparse_table":
+			l -= 1
+			r -= 1
 			var k := 0
 			while (1 << (k + 1)) <= r - l + 1: k += 1
 			record("长度 %d，选取 k=%d；两个区间允许重叠" % [r - l + 1, k], [], 2)
@@ -171,6 +172,7 @@ func _prefix2(x: int, y: int) -> int:
 func view() -> Dictionary:
 	var nodes: Array = []
 	var edges: Array = []
+	var annotations: Array = []
 	if kind == "fenwick2":
 		for i in range(1, mini(grid.size(), 5)):
 			for j in range(1, 5):
@@ -179,11 +181,20 @@ func view() -> Dictionary:
 				nodes.append(vertex("b%d_%d" % [i, j], bit2[i][j], 470 + j * 80, 45 + i * 85,
 					"bit[%d,%d]" % [i, j], "box"))
 	elif kind == "sparse_table":
+		var y := 80.0
 		for k in table.size():
+			var length := 1 << k
+			annotations.append({"pos": Vector2(40, y - 28), "text": "第 %d 层 · 长度 %d" % [k, length]})
 			for i in 8:
 				if table[k][i] != null:
-					nodes.append(vertex("s%d_%d" % [k, i], table[k][i], 60 + i * 90, 80 + k * 115,
-						"[%d,%d]" % [i, i + (1 << k) - 1], "box"))
+					var label := "%s" % table[k][i] if k == 0 else "[%d,%d]  min=%s" % [i + 1, i + length, table[k][i]]
+					var bar := vertex("s%d_%d" % [k, i], label,
+						40 + (i + length / 2.0) * 90, y + (i % length) * 35,
+						"[%d]" % [i + 1] if k == 0 else "", "box", "green" if k % 2 else "")
+					bar["size"] = Vector2(length * 90, 29)
+					bar["range"] = [i + 1, i + length]
+					nodes.append(bar)
+			y += mini(length, 9 - length) * 35 + (65 if k == 0 else 48)
 	else:
 		for i in 8:
 			nodes.append(vertex("a%d" % i, data[i], 60 + i * 95, 90, "a[%d]" % [i + 1], "box"))
@@ -195,7 +206,7 @@ func view() -> Dictionary:
 				"[%d,%d]" % [i - (i & -i) + 1, i]))
 			var parent := i + (i & -i)
 			if parent <= 8: edges.append(edge("b%d" % i, "b%d" % parent, "lowbit"))
-	return {"nodes": nodes, "edges": edges, "stats":
+	return {"nodes": nodes, "edges": edges, "annotations": annotations, "stats":
 		"4×4  ·  左：原始矩阵  /  右：树状数组" if kind == "fenwick2" else
 		("n=8  ·  静态 RMQ  ·  每层长度 2^k" if kind == "sparse_table" else "n=8  ·  1-based  ·  lowbit(i) = i & −i")}
 

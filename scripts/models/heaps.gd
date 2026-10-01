@@ -36,10 +36,10 @@ func _swap(a: int, b: int) -> void:
 	var temp: Dictionary = items[a]
 	items[a] = items[b]
 	items[b] = temp
-	record("交换位置 %d 与 %d" % [a, b], [str(items[a].id), str(items[b].id)], 3)
+	record("交换位置 %d 与 %d" % [a + 1, b + 1], [str(items[a].id), str(items[b].id)], 3)
 
 func _down(index: int, count: int) -> void:
-	calls.append("sift_down(%d, size=%d)" % [index, count])
+	calls.append("sift_down(%d, size=%d)" % [index + 1, count])
 	while index * 2 + 1 < count:
 		var child := index * 2 + 1
 		if child + 1 < count and _better(items[child + 1].value, items[child].value): child += 1
@@ -82,7 +82,7 @@ func perform(action: String, args: Dictionary) -> bool:
 		for end in range(items.size() - 1, 0, -1):
 			_swap(0, end)
 			sorted_from = end
-			record("最大值归位到 [%d]，绿色部分已排序" % end, [str(items[end].id)], 2)
+			record("最大值归位到 [%d]，绿色部分已排序" % [end + 1], [str(items[end].id)], 2)
 			_down(0, end)
 		sorted_from = 0
 	record("操作完成%s" % ("：升序排列" if action == "sort" else ""), [], 4)
@@ -96,9 +96,9 @@ func view() -> Dictionary:
 		var first := (1 << depth) - 1
 		var x := (i - first + 0.5) * 720.0 / (1 << depth)
 		var tone := "green" if sorted_from >= 0 and i >= sorted_from else ""
-		nodes.append(vertex(items[i].id, items[i].value, x, 65 + depth * 100, "[%d]" % i, "circle", tone))
+		nodes.append(vertex(items[i].id, items[i].value, x, 65 + depth * 100, "[%d]" % [i + 1], "circle", tone))
 		if i > 0: edges.append(edge(items[(i - 1) / 2].id, items[i].id))
-		nodes.append(vertex("array" + str(items[i].id), items[i].value, 50 + i * 65, 480, "[%d]" % i, "box", tone))
+		nodes.append(vertex("array" + str(items[i].id), items[i].value, 50 + i * 65, 480, "[%d]" % [i + 1], "box", tone))
 	return {"nodes": nodes, "edges": edges, "stats": "元素 %d · %s" % [items.size(), "大顶堆 → 升序" if kind == "heap_sort" else "最小堆"]}
 
 func invariant() -> String:

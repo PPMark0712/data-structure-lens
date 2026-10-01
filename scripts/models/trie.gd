@@ -35,7 +35,7 @@ func operations() -> Array:
 	else:
 		ops.append(op("xor", "最大异或", [field("value", "与谁异或（0–255）", "7")]))
 	if kind == "persistent_trie":
-		ops.append(op("version", "切换历史版本", [field("version", "版本号", "0")]))
+		ops.append(op("version", "切换历史版本", [field("version", "版本号（1 起）", "1")]))
 	return ops
 
 func _node(letter: String, depth: int) -> int:
@@ -106,13 +106,13 @@ func _walk(letters: Array) -> int:
 
 func perform(action: String, args: Dictionary) -> bool:
 	if action == "version":
-		var target := int(args.version)
+		var target := int(args.version) - 1
 		if target < 0 or target >= roots.size(): return fail("版本不存在。")
 		begin()
 		version = target
 		root = roots[version]
 		values = histories[version].duplicate()
-		record("切换到 V%d" % version, [str(root)], 5)
+		record("切换到 V%d" % [version + 1], [str(root)], 5)
 		return true
 	var value: Variant = args.value
 	if not _valid(value): return false
@@ -161,10 +161,10 @@ func perform(action: String, args: Dictionary) -> bool:
 				if not pool[id].children.has(chosen): chosen = str(current)
 				id = pool[id].children[chosen]
 				matched = (matched << 1) | int(chosen)
-				record("第 %d 位选 %s；%s" % [bit, chosen, "得到异或位 1" if int(chosen) != current else "只能取同位"], [str(id)], 4)
+				record("第 %d 位（最低位为 1）选 %s；%s" % [bit + 1, chosen, "得到异或位 1" if int(chosen) != current else "只能取同位"], [str(id)], 4)
 			result = int(value) ^ matched
 			record("最大异或：%d XOR %d = %d" % [value, matched, result], [str(id)], 4)
-	record("操作完成 · 当前共 %d 个键%s" % [values.size(), " · V%d" % version if kind == "persistent_trie" else ""])
+	record("操作完成 · 当前共 %d 个键%s" % [values.size(), " · V%d" % [version + 1] if kind == "persistent_trie" else ""])
 	return true
 
 func view() -> Dictionary:
@@ -180,13 +180,13 @@ func view() -> Dictionary:
 			var id: int = levels[depth][i]
 			var n: Dictionary = pool[id]
 			var v := roots.find(id)
-			var label: String = n.letter if depth else ("V%d" % v if v >= 0 else "根")
+			var label: String = n.letter if depth else ("V%d" % [v + 1] if v >= 0 and kind == "persistent_trie" else "根")
 			nodes.append(vertex(id, label, 70 + i * 100, 60 + depth * 105,
 				"#%d · %d/%d" % [id, n.count, n.end], "circle", "green" if id == root or n.end > 0 else ""))
 			for letter in n.children: edges.append(edge(id, n.children[letter], letter))
 	return {"nodes": nodes, "edges": edges, "stats":
 		"键 %d · 节点 %d · 计数=经过/终止%s" % [values.size(), pool.size(),
-		" · V%d / %d 版本" % [version, roots.size()] if kind == "persistent_trie" else ""]}
+		" · V%d / %d 版本" % [version + 1, roots.size()] if kind == "persistent_trie" else ""]}
 
 func invariant() -> String:
 	for id in pool:

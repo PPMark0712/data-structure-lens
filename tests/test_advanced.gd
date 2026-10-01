@@ -150,13 +150,13 @@ func _tries() -> void:
 	var histories: Array = [model.values.duplicate()]
 	for version in range(1, 6):
 		var base := rng.randi_range(0, version - 1)
-		model.perform("version", {"version": base})
+		model.perform("version", {"version": base + 1})
 		var value := rng.randi_range(0, 255)
 		check(model.perform("insert", {"value": value}), "persistent insert")
 		histories.append(histories[base] + [value])
 		check(model.invariant().is_empty(), "persistent trie invariant")
 	for version in histories.size():
-		model.perform("version", {"version": version})
+		model.perform("version", {"version": version + 1})
 		for query in 256:
 			model.perform("xor", {"value": query})
 			var expected := -1

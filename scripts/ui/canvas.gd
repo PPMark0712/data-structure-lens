@@ -54,9 +54,14 @@ func fit_frames(frames: Array) -> void:
 		zoom = 1.0
 		offset = Vector2(25, 25)
 		return
-	var bounds := Rect2(nodes[0].pos - Vector2(55, 45), Vector2(110, 100))
+	var bounds := Rect2(nodes[0].pos, Vector2.ZERO)
 	for node in nodes:
-		bounds = bounds.expand(node.pos - Vector2(65, 50)).expand(node.pos + Vector2(65, 60))
+		var half: Vector2 = node.get("size", Vector2(90, 60)) / 2
+		bounds = bounds.expand(node.pos - half - Vector2(20, 20)).expand(node.pos + half + Vector2(20, 32))
+	for frame in frames:
+		for annotation in frame.get("annotations", []):
+			bounds = bounds.expand(annotation.pos - Vector2(0, 20))
+			bounds = bounds.expand(annotation.pos + Vector2(font.get_string_size(annotation.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x, 4))
 	zoom = clampf(minf((size.x - 60) / bounds.size.x, (size.y - 60) / bounds.size.y), 0.18, 1.4)
 	offset = (size - bounds.size * zoom) / 2 - bounds.position * zoom
 	queue_redraw()
@@ -86,7 +91,8 @@ func _gui_input(event: InputEvent) -> void:
 				if dragging and not moved:
 					var point: Vector2 = (event.position - offset) / zoom
 					for node in current.get("nodes", []):
-						if point.distance_to(node.pos) < 34:
+						var node_size: Vector2 = node.get("size", Vector2(68, 68))
+						if Rect2(node.pos - node_size / 2, node_size).has_point(point):
 							picked.emit(str(node.id))
 							break
 				dragging = false
@@ -123,6 +129,8 @@ func _draw() -> void:
 	for id in new:
 		var opacity := 1.0 if old.has(id) else progress
 		_draw_vertex(new[id], positions[id], opacity, current.get("active", []).has(id))
+	for annotation in current.get("annotations", []):
+		draw_string(font, annotation.pos, annotation.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
 	draw_set_transform(Vector2.ZERO)
 	if new.is_empty():
 		draw_string(font, Vector2(36, 65), "结构为空 · 使用操作面板加入元素", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
@@ -169,7 +177,8 @@ func _draw_vertex(node: Dictionary, position: Vector2, alpha: float, active: boo
 	if active and node.get("tone", "") in ["red", "black"]:
 		draw_arc(position, 32, 0, TAU, 48, Color("#268bd2", alpha), 3, true)
 	if node.get("shape", "circle") == "box":
-		var rect := Rect2(position - Vector2(29, 24), Vector2(58, 48))
+		var node_size: Vector2 = node.get("size", Vector2(58, 48))
+		var rect := Rect2(position - node_size / 2, node_size)
 		draw_rect(rect, fill)
 		draw_rect(rect, outline, false, 2 if active else 1.5)
 	else:

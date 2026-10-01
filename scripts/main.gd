@@ -16,6 +16,7 @@ var selected_op: Dictionary
 var timeline: HSlider
 var play_button: Button
 var execute_button: Button
+var operation_note: Label
 var status: Label
 var heading: Label
 var subtitle: Label
@@ -184,6 +185,17 @@ func _build_ui() -> void:
 	operation_box.add_child(fields_box)
 	execute_button = _button("执行操作", _execute)
 	operation_box.add_child(execute_button)
+	var note_panel := PanelContainer.new()
+	var note_style := StyleBoxFlat.new()
+	note_style.bg_color = PANEL
+	note_style.set_corner_radius_all(4)
+	for side in ["left", "right", "top", "bottom"]:
+		note_style.set("content_margin_" + side, 10)
+	note_panel.add_theme_stylebox_override("panel", note_style)
+	operation_box.add_child(note_panel)
+	operation_note = _label("", 14)
+	operation_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note_panel.add_child(operation_note)
 	var reset_row := HBoxContainer.new()
 	operation_box.add_child(reset_row)
 	reset_row.add_child(_button("恢复默认", func(): _select(selected_entry)))
@@ -218,7 +230,7 @@ func _button(text: String, action: Callable) -> Button:
 
 func _rich(height: float) -> RichTextLabel:
 	var label := RichTextLabel.new()
-	label.bbcode_enabled = true
+	label.bbcode_enabled = false
 	label.fit_content = true
 	label.scroll_active = false
 	label.custom_minimum_size = Vector2(290, height)
@@ -270,6 +282,7 @@ func _choose_operation(index: int) -> void:
 	_clear(fields_box)
 	editors.clear()
 	selected_op = model.operations()[index]
+	operation_note.text = "操作说明\n" + selected_op.note
 	pick_second = false
 	for spec in selected_op.fields:
 		fields_box.add_child(_label(spec.title, 14))
@@ -415,8 +428,11 @@ func _pick_node(id: String) -> void:
 			index = int(detail.get_slice("]", 0).trim_prefix("["))
 		if model.kind == "fenwick":
 			index = int(id.substr(1)) + (1 if id.begins_with("a") else 0)
-		if model.kind == "sparse_table": index = int(id.get_slice("_", 1))
-		if index >= 0:
+		if model.kind == "sparse_table" and node.has("range"):
+			fill["l"] = node.range[0]
+			fill["r"] = node.range[1]
+			index = -1
+		if index >= 1:
 			fill["index"] = index
 			if editors.has("l"):
 				fill["r" if pick_second else "l"] = index

@@ -119,11 +119,13 @@ func _splay(id: int) -> void:
 			record("Zig：父节点就是根，旋转一次", [str(id), str(p)], 5)
 			_rotate(p, pool[p].right == id)
 		elif (pool[p].left == id) == (pool[g].left == p):
-			record("Zig-Zig：同侧，先旋父亲再旋自己", [str(id), str(p), str(g)], 5)
+			record("Zig-Zig：同侧；先绕祖父 #%d %s旋提升父亲，再绕父亲 #%d 同向旋转提升当前节点" %
+				[g, "左" if pool[g].right == p else "右", p], [str(id), str(p), str(g)], 5)
 			_rotate(g, pool[g].right == p)
 			_rotate(p, pool[p].right == id)
 		else:
-			record("Zig-Zag：异侧，连续提升当前节点", [str(id), str(p), str(g)], 5)
+			record("Zig-Zag：异侧；先绕父亲 #%d %s旋，再绕祖父 #%d 反向旋转，两次提升当前节点" %
+				[p, "左" if pool[p].right == id else "右", g], [str(id), str(p), str(g)], 5)
 			_rotate(p, pool[p].right == id)
 			_rotate(g, pool[g].right == id)
 

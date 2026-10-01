@@ -70,7 +70,7 @@ def main():
         run_godot(executable, log="desktop")
         return
     if args.command == "test":
-        for name in ["models", "advanced", "interactions"]:
+        for name in ["models", "advanced", "teaching", "interactions"]:
             run_godot(executable, "--headless", "--script", f"tests/test_{name}.gd", log=name)
     elif args.command == "export":
         if not (ROOT / ".tools" / "templates" / "web_nothreads_release.zip").exists():

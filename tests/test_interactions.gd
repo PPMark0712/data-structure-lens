@@ -21,6 +21,9 @@ func _run() -> void:
 		for i in ui.model.operations().size():
 			ui._select(entry)
 			ui._choose_operation(i)
+			check(ui.operation_note.text == "操作说明\n" + ui.selected_op.note, entry[1] + " selected operation note")
+			check(ui.operation_note.get_parent().get_index() == ui.execute_button.get_index() + 1,
+				entry[1] + " note immediately below execute")
 			var before: Dictionary = ui.model.view().duplicate(true)
 			ui.execute_button.pressed.emit()
 			check(ui.history.size() == 1, entry[1] + " executes from form")
@@ -66,6 +69,37 @@ func _run() -> void:
 	ui._select(LabCatalog.ENTRIES[12]) # 2D Fenwick
 	ui._pick_node("a2_3")
 	check(ui.editors.x.text == "2" and ui.editors.y.text == "3", "matrix coordinate picking")
+	ui._select(LabCatalog.ENTRIES[2]) # Linked head picking uses position 1.
+	ui._pick_node(str(ui.model.head))
+	check(ui.editors.index.text == "1", "linked head picks position 1")
+	ui.editors.value.text = "99"
+	ui.execute_button.pressed.emit()
+	check(ui.model.items[0].value == 99, "linked form inserts before head")
+	ui._undo()
+	check(ui.model.items[0].value == 12, "linked head insertion undo")
+	ui._select(LabCatalog.ENTRIES[16]) # 2D segment
+	ui._pick_node("a1_4")
+	check(ui.editors.x.text == "1" and ui.editors.y.text == "4", "2D segment uses 1-based cells")
+	ui._select(LabCatalog.ENTRIES[13]) # ST bar endpoints
+	check(ui.code_label.get_parsed_text().contains("st[i][0] = a[i]"), "literal indices survive text rendering")
+	ui._pick_node("s2_1")
+	check(ui.editors.l.text == "2" and ui.editors.r.text == "5", "ST bar fills covered interval")
+	ui.canvas.fit()
+	var bar: Dictionary = ui.canvas.current.nodes.filter(func(node): return node.id == "s3_0")[0]
+	var point: Vector2 = (bar.pos + Vector2(bar.size.x / 2 - 5, 0)) * ui.canvas.zoom + ui.canvas.offset
+	var mouse := InputEventMouseButton.new()
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	mouse.position = point
+	mouse.pressed = true
+	ui.canvas._gui_input(mouse)
+	mouse.pressed = false
+	ui.canvas._gui_input(mouse)
+	check(ui.editors.l.text == "1" and ui.editors.r.text == "8", "long bar edge is clickable")
+	for node in ui.canvas.current.nodes:
+		var left: Vector2 = (node.pos - node.size / 2) * ui.canvas.zoom + ui.canvas.offset
+		var right: Vector2 = (node.pos + node.size / 2) * ui.canvas.zoom + ui.canvas.offset
+		check(Rect2(Vector2.ZERO, ui.canvas.size).has_point(left) and
+			Rect2(Vector2.ZERO, ui.canvas.size).has_point(right), "ST fit contains entire bar")
 	ui._select(LabCatalog.ENTRIES[21]) # Fibonacci
 	ui._choose_operation(2)
 	ui._pick_node("8")

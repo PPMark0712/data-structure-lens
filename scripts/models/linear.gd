@@ -7,6 +7,7 @@ var stream_index := 0
 var window := 3
 var head := 0
 var tail := 0
+var visual_slots: Dictionary = {}
 
 func _init(p_kind: String = "array") -> void:
 	super(p_kind)
@@ -15,27 +16,18 @@ func _init(p_kind: String = "array") -> void:
 	for value in [12, 7, 24, 16]:
 		_insert_at(items.size(), {"id": uid(), "value": value, "index": stream_index})
 		stream_index += 1
-	if kind == "mono_stack" or kind == "mono_queue":
-		items.clear()
-		stream_index = 0
-		recording = false
-		for value in [12, 7, 24, 16]:
-			_monotone(value)
-		recording = true
 	if kind == "dynamic_array":
 		capacity = 4
 
 func operations() -> Array:
 	var value := field("value", "数值", "9")
-	var index := field("index", "位置（0 起）", "1")
+	var index := field("index", "位置（1 起；1 为头插）", "1")
 	var result: Array = []
 	match kind:
-		"stack", "mono_stack":
+		"stack":
 			result = [op("push", "入栈", [value]), op("pop", "出栈"), op("peek", "查看栈顶")]
 		"queue":
 			result = [op("push", "入队", [value]), op("pop", "出队"), op("peek", "查看队首")]
-		"mono_queue":
-			result = [op("push", "读入下一个值", [value]), op("peek", "窗口最大值")]
 		_:
 			result = [op("insert", "插入", [index, value]), op("delete", "删除", [index]),
 				op("update", "修改", [index, value]), op("get", "按位置查询", [index]),
@@ -61,42 +53,40 @@ func perform(action: String, args: Dictionary) -> bool:
 		capacity = 4 if kind == "dynamic_array" else 8
 		record("清空旧结构", [], 0)
 		for value in values:
-			if kind.begins_with("mono"):
-				_monotone(value)
-			else:
-				_grow()
-				_insert_at(items.size(), {"id": uid(), "value": value, "index": stream_index})
-				stream_index += 1
-				record("插入 %d" % value, [str(items.back().id)], 2)
+			_grow()
+			_insert_at(items.size(), {"id": uid(), "value": value, "index": stream_index})
+			stream_index += 1
+			record("插入 %d" % value, [str(items.back().id)], 2)
 		record("构建完成", [], 3)
 		return true
-	var index := int(args.get("index", 0))
+	var index := int(args.get("index", 1)) - 1
 	var value := int(args.get("value", 0))
 	if action == "insert" and (index < 0 or index > items.size()):
-		return fail("插入位置必须在 0 到 %d 之间。" % items.size())
+		return fail("插入位置必须在 1 到 %d 之间；1 为头插，%d 为尾插。" % [items.size() + 1, items.size() + 1])
 	if action in ["delete", "update", "get"] and (index < 0 or index >= items.size()):
 		return fail("该位置不存在。当前长度为 %d。" % items.size())
 	if action in ["pop", "peek"] and items.is_empty():
 		return fail("结构为空，无法读取或移除元素。")
-	if action in ["push", "insert"] and not kind.begins_with("mono"):
+	if action in ["push", "insert"]:
 		if items.size() >= (8 if kind == "array" else 16):
 			return fail("已达到演示容量上限。")
-	if action == "push" and kind == "mono_stack" and items.size() >= 16 and value > items.back().value:
-		return fail("单调栈已达 16 个元素；此次输入不会弹出旧元素，无法加入。")
 	begin()
 	match action:
 		"push", "insert":
-			if kind.begins_with("mono"):
-				_monotone(value)
-			else:
-				if action == "push":
-					index = items.size()
-				_visit_to(index)
-				_grow()
-				var item := {"id": uid(), "value": value, "index": stream_index}
-				stream_index += 1
-				_insert_at(index, item)
-				record("在位置 %d 插入 %d，更新后继位置 / 连边" % [index, value], [str(item.id)], 2)
+			if action == "push":
+				index = items.size()
+			_visit_to(index)
+			_grow()
+			if kind in ["array", "dynamic_array"]:
+				for i in range(items.size() - 1, index - 1, -1):
+					visual_slots[items[i].id] = i + 1
+					record("将 %s 从位置 %d 右移到 %d，为插入腾出空位" % [items[i].value, i + 1, i + 2],
+						[str(items[i].id)], 2)
+			var item := {"id": uid(), "value": value, "index": stream_index}
+			stream_index += 1
+			_insert_at(index, item)
+			visual_slots.clear()
+			record("在位置 %d 插入 %d，更新长度及头尾指针" % [index + 1, value], [str(item.id)], 3)
 		"delete", "pop":
 			if action == "pop":
 				index = 0 if kind == "queue" else items.size() - 1
@@ -107,17 +97,17 @@ func perform(action: String, args: Dictionary) -> bool:
 		"update":
 			_visit_to(index)
 			items[index].value = value
-			record("将位置 %d 修改为 %d" % [index, value], [str(items[index].id)], 2)
+			record("将位置 %d 修改为 %d" % [index + 1, value], [str(items[index].id)], 2)
 		"get", "peek":
 			if action == "peek":
-				index = 0 if kind in ["queue", "mono_queue"] else items.size() - 1
+				index = 0 if kind == "queue" else items.size() - 1
 			_visit_to(index)
 			record("查询结果：%s" % items[index].value, [str(items[index].id)], 3)
 		"find":
 			for i in items.size():
-				record("比较位置 %d 的值 %s" % [i, items[i].value], [str(items[i].id)], 1)
+				record("比较位置 %d 的值 %s" % [i + 1, items[i].value], [str(items[i].id)], 1)
 				if items[i].value == value:
-					record("找到 %d，位置为 %d" % [value, i], [str(items[i].id)], 3)
+					record("找到 %d，位置为 %d" % [value, i + 1], [str(items[i].id)], 3)
 					return true
 			record("未找到 %d" % value, [], 3)
 	return true
@@ -153,10 +143,10 @@ func _visit_to(index: int) -> void:
 	if kind in ["linked", "doubly"]:
 		var id := head
 		for i in mini(index + 1, items.size()):
-			record("沿 next 指针访问第 %d 个节点" % i, [str(id)], 1)
+			record("沿 next 指针访问第 %d 个节点" % [i + 1], [str(id)], 1)
 			id = _by_id(id).next
 	elif index < items.size():
-		record("定位到位置 %d" % index, [str(items[index].id)], 1)
+		record("定位到位置 %d" % [index + 1], [str(items[index].id)], 1)
 
 func _grow() -> void:
 	if kind != "dynamic_array" or items.size() < capacity:
@@ -168,40 +158,22 @@ func _grow() -> void:
 		record("将元素 %s 复制到新存储区" % item.value, [str(item.id)], 2)
 	record("复制完成，释放旧存储区；单次扩容 O(n)，append 均摊 O(1)", [], 3)
 
-func _monotone(value: int) -> void:
-	if kind == "mono_queue":
-		while not items.is_empty() and items.front().index <= stream_index - window:
-			record("下标 %d 已滑出长度 %d 的窗口，移除队首" % [items.front().index, window],
-				[str(items.front().id)], 0)
-			items.pop_front()
-	while not items.is_empty():
-		record("比较末尾 %s 与新值 %d" % [items.back().value, value], [str(items.back().id)], 1)
-		var remove: bool = items.back().value <= value if kind == "mono_queue" else items.back().value >= value
-		if not remove:
-			break
-		record("末尾元素无法保持单调性，弹出", [str(items.back().id)], 2)
-		items.pop_back()
-	var item := {"id": uid(), "value": value, "index": stream_index}
-	items.append(item)
-	stream_index += 1
-	record("加入 %d；%s" % [value, "队首为当前窗口最大值" if kind == "mono_queue" else "栈从底到顶严格递增"],
-		[str(item.id)], 3)
-
 func view() -> Dictionary:
 	var nodes: Array = []
 	var edges: Array = []
 	var linked := kind in ["linked", "doubly"]
-	var stack := kind in ["stack", "mono_stack"]
+	var stack := kind == "stack"
+	var occupied := {}
 	for i in items.size():
 		var item := items[i]
-		var x := 150.0 if stack else 75.0 + i * (110.0 if linked else 78.0)
+		var slot: int = visual_slots.get(item.id, i)
+		occupied[slot] = true
+		var x := 150.0 if stack else 75.0 + slot * (110.0 if linked else 78.0)
 		var y := 660.0 - i * 68.0 if stack else 200.0
-		var detail := "[%d]" % i
-		if kind == "mono_queue":
-			detail = "t=%d" % item.index
+		var detail := "[%d]" % [slot + 1]
 		if stack and i == items.size() - 1:
 			detail += " TOP"
-		if kind in ["queue", "mono_queue", "linked", "doubly"]:
+		if kind in ["queue", "linked", "doubly"]:
 			if i == 0: detail += " HEAD"
 			if i == items.size() - 1: detail += " TAIL"
 		nodes.append(vertex(item.id, item.value, x, y, detail, "circle" if linked else "box"))
@@ -210,13 +182,12 @@ func view() -> Dictionary:
 			if kind == "doubly" and item.prev:
 				edges.append(edge(item.id, item.prev, "prev", true))
 	if kind in ["array", "dynamic_array"]:
-		for i in range(items.size(), capacity):
-			nodes.append(vertex("empty%d" % i, "·", 75 + i * 78, 200, "[%d]" % i, "box", "muted"))
+		for i in capacity:
+			if not occupied.has(i):
+				nodes.append(vertex("empty%d" % i, "·", 75 + i * 78, 200, "[%d]" % [i + 1], "box", "muted"))
 	var stats := "长度 %d" % items.size()
 	if kind in ["array", "dynamic_array"]:
 		stats += "  /  容量 %d" % capacity
-	if kind == "mono_queue":
-		stats += "  ·  窗口长度 %d  ·  已读入 %d 个值" % [window, stream_index]
 	return {"nodes": nodes, "edges": edges, "stats": stats}
 
 func invariant() -> String:
@@ -230,9 +201,4 @@ func invariant() -> String:
 				return "list next pointer"
 			if kind == "doubly" and items[i].prev != (items[i - 1].id if i else 0):
 				return "list prev pointer"
-	for i in range(1, items.size()):
-		if kind == "mono_stack" and items[i - 1].value >= items[i].value:
-			return "monotone stack order"
-		if kind == "mono_queue" and items[i - 1].value <= items[i].value:
-			return "monotone queue order"
 	return ""

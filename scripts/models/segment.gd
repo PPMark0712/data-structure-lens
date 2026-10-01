@@ -19,13 +19,13 @@ func _init(p_kind: String = "segment") -> void:
 		domain = 32
 		data.resize(domain)
 		data.fill(0)
-		root = _new_node(0, domain - 1)
-		for index in [3, 12, 24]:
-			_add(root, index, index, index + 1)
-			data[index] += index + 1
+		root = _new_node(1, domain)
+		for index in [4, 13, 25]:
+			_add(root, index, index, index)
+			data[index - 1] += index
 	else:
 		data = [3, 1, 4, 1, 5, 9, 2, 6]
-		root = _build(0, 7)
+		root = _build(1, 8)
 	roots.append(root)
 	version_data.append(data.duplicate())
 	recording = true
@@ -33,15 +33,15 @@ func _init(p_kind: String = "segment") -> void:
 func operations() -> Array:
 	var result_ops: Array = []
 	if kind == "segment":
-		result_ops.append(op("add", "区间增加", [field("l", "左端点（0 起）", "2"),
+		result_ops.append(op("add", "区间增加", [field("l", "左端点（1 起）", "2"),
 			field("r", "右端点（含）", "6"), field("value", "增量", "5")]))
 	else:
-		result_ops.append(op("add", "单点增加", [field("index", "下标（0–%d）" % [domain - 1], "3"),
+		result_ops.append(op("add", "单点增加", [field("index", "下标（1–%d）" % domain, "3"),
 			field("value", "增量", "5")]))
-	result_ops.append(op("query", "区间求和", [field("l", "左端点（0 起）", "1"),
+	result_ops.append(op("query", "区间求和", [field("l", "左端点（1 起）", "1"),
 		field("r", "右端点（含）", "6")]))
 	if kind == "persistent_segment":
-		result_ops.append(op("version", "切换历史版本", [field("version", "版本号（0 起）", "0")]))
+		result_ops.append(op("version", "切换历史版本", [field("version", "版本号（1 起）", "1")]))
 	return result_ops
 
 func _new_node(l: int, r: int) -> int:
@@ -52,7 +52,7 @@ func _new_node(l: int, r: int) -> int:
 func _build(l: int, r: int) -> int:
 	var id := _new_node(l, r)
 	if l == r:
-		pool[id].sum = data[l]
+		pool[id].sum = data[l - 1]
 	else:
 		var mid := (l + r) >> 1
 		pool[id].left = _build(l, mid)
@@ -90,18 +90,18 @@ func _children(id: int) -> void:
 
 func perform(action: String, args: Dictionary) -> bool:
 	if action == "version":
-		var target := int(args.version)
+		var target := int(args.version) - 1
 		if target < 0 or target >= roots.size(): return fail("该版本不存在。")
 		begin()
 		version = target
 		root = roots[version]
 		data = version_data[version].duplicate()
-		record("切换到版本 V%d；共享节点保持不变" % version, [str(root)], 0)
+		record("切换到版本 V%d；共享节点保持不变" % [version + 1], [str(root)], 0)
 		return true
-	var l := int(args.get("l", args.get("index", 0)))
+	var l := int(args.get("l", args.get("index", 1)))
 	var r := int(args.get("r", l))
-	if l < 0 or r >= domain or l > r:
-		return fail("区间必须满足 0 ≤ l ≤ r < %d。" % domain)
+	if l < 1 or r > domain or l > r:
+		return fail("区间必须满足 1 ≤ l ≤ r ≤ %d。" % domain)
 	if kind == "persistent_segment" and action == "add" and roots.size() >= 6:
 		return fail("最多演示 6 个版本；可恢复默认后重新实验。")
 	begin()
@@ -110,14 +110,14 @@ func perform(action: String, args: Dictionary) -> bool:
 		if kind == "persistent_segment":
 			var previous_version := version
 			root = _copy_add(root, l, delta)
-			data[l] += delta
+			data[l - 1] += delta
 			roots.append(root)
 			version_data.append(data.duplicate())
 			version = roots.size() - 1
-			record("从 V%d 创建 V%d；只复制根到叶路径" % [previous_version, version], [str(root)], 4)
+			record("从 V%d 创建 V%d；只复制根到叶路径" % [previous_version + 1, version + 1], [str(root)], 4)
 		else:
 			_add(root, l, r, delta)
-			for i in range(l, r + 1): data[i] += delta
+			for i in range(l, r + 1): data[i - 1] += delta
 			record("更新 [%d,%d] 完成；根区间和 = %d" % [l, r, _sum(root)], [str(root)], 4)
 	else:
 		result = _query(root, l, r)
@@ -204,17 +204,17 @@ func view() -> Dictionary:
 			if kind == "persistent_segment":
 				x = 70 + column * 110
 			else:
-				x = 50 + float(n.l + n.r) / 2 * (95 if domain == 8 else 35)
+				x = 50 + float(n.l + n.r - 2) / 2 * (95 if domain == 8 else 35)
 			var label := "[%d,%d]" % [n.l, n.r]
 			if n.tag != 0: label += " +%d" % n.tag
 			var v := roots.find(id)
-			if v >= 0 and kind == "persistent_segment": label = "V%d " % v + label
+			if v >= 0 and kind == "persistent_segment": label = "V%d " % [v + 1] + label
 			nodes.append(vertex(id, n.sum, x, 80 + depth * 115, label, "circle", "green" if id == root else ""))
 			if n.left: edges.append(edge(id, n.left))
 			if n.right: edges.append(edge(id, n.right))
 	return {"nodes": nodes, "edges": edges, "stats":
-		"范围 [0,%d]  ·  已分配 %d 个节点%s" % [domain - 1, pool.size(),
-		"  ·  当前 V%d / 共 %d 个版本" % [version, roots.size()] if kind == "persistent_segment" else ""]}
+		"范围 [1,%d]  ·  已分配 %d 个节点%s" % [domain, pool.size(),
+		"  ·  当前 V%d / 共 %d 个版本" % [version + 1, roots.size()] if kind == "persistent_segment" else ""]}
 
 func invariant() -> String:
 	for id in pool:

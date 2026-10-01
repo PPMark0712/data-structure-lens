@@ -60,11 +60,11 @@ func _random_linear() -> void:
 			var limit := 8 if kind == "array" else 16
 			if reference.is_empty() or (rng.randf() < 0.5 and reference.size() < limit):
 				var index := rng.randi_range(0, reference.size())
-				check(model.perform("insert", {"index": index, "value": value}), "linear insert")
+				check(model.perform("insert", {"index": index + 1, "value": value}), "linear insert")
 				reference.insert(index, value)
 			else:
 				var index := rng.randi_range(0, reference.size() - 1)
-				check(model.perform("delete", {"index": index}), "linear delete")
+				check(model.perform("delete", {"index": index + 1}), "linear delete")
 				reference.remove_at(index)
 			var actual: Array = []
 			for item in model.items: actual.append(item.value)
@@ -141,7 +141,7 @@ func _random_segments() -> void:
 			var l := rng.randi_range(0, model.domain - 1)
 			var r := rng.randi_range(l, model.domain - 1) if kind == "segment" else l
 			var delta := rng.randi_range(-10, 10)
-			var args := {"l": l, "r": r, "value": delta} if kind == "segment" else {"index": l, "value": delta}
+			var args := {"l": l + 1, "r": r + 1, "value": delta} if kind == "segment" else {"index": l + 1, "value": delta}
 			check(model.perform("add", args), kind + " update")
 			for i in range(l, r + 1): reference[i] += delta
 			check(model.invariant().is_empty(), kind + " invariant")
@@ -149,12 +149,12 @@ func _random_segments() -> void:
 				var end := rng.randi_range(i, model.domain - 1)
 				var expected := 0
 				for j in range(i, end + 1): expected += reference[j]
-				model.perform("query", {"l": i, "r": end})
+				model.perform("query", {"l": i + 1, "r": end + 1})
 				check(model.result == expected, kind + " brute sum")
 				check(model.invariant().is_empty(), kind + " query preserves invariant")
 		if kind == "persistent_segment":
-			model.perform("version", {"version": 0})
-			model.perform("query", {"l": 0, "r": 7})
+			model.perform("version", {"version": 1})
+			model.perform("query", {"l": 1, "r": 8})
 			check(model.result == 31, "persistent segment original version unchanged")
 	var model: LabModel = load("res://scripts/models/segment2.gd").new()
 	model.recording = false
@@ -163,13 +163,13 @@ func _random_segments() -> void:
 		var x := rng.randi_range(0, 3)
 		var y := rng.randi_range(0, 3)
 		var delta := rng.randi_range(-10, 10)
-		check(model.perform("add", {"x": x, "y": y, "value": delta}), "2D segment update")
+		check(model.perform("add", {"x": x + 1, "y": y + 1, "value": delta}), "2D segment update")
 		reference[x][y] += delta
 		var x1 := rng.randi_range(0, 3)
 		var y1 := rng.randi_range(0, 3)
 		var x2 := rng.randi_range(x1, 3)
 		var y2 := rng.randi_range(y1, 3)
-		model.perform("query", {"x1": x1, "y1": y1, "x2": x2, "y2": y2})
+		model.perform("query", {"x1": x1 + 1, "y1": y1 + 1, "x2": x2 + 1, "y2": y2 + 1})
 		var expected := 0
 		for i in range(x1, x2 + 1):
 			for j in range(y1, y2 + 1): expected += reference[i][j]

@@ -13,11 +13,11 @@
 
 `scripts/core/model.gd` 中的 `LabModel` 继承 `RefCounted`，不引用场景节点。
 
-- `operations()` 返回操作与字段定义；字段含 key、title、initial、text。
+- `operations()` 返回操作、note 和字段定义；字段含 key、title、initial、text。操作说明集中在 `scripts/core/operation_notes.gd`，选择操作时显示在执行按钮下方。
 - `perform(action, args)` 验证参数，执行算法；失败返回 false 并设置 error。
 - `begin()` 清空轨迹、记录操作前状态。
 - `record(message, active_ids, code_line)` 深复制 `view()`，记录算法行号和调用栈。
-- `view()` 返回 nodes、edges、stats；节点含稳定 id、label、pos、detail、shape、tone。
+- `view()` 返回 nodes、edges、stats，可选 annotations 为文字标注；节点含稳定 id、label、pos、detail、shape、tone，可选 size 为矩形尺寸，range 为点击选取的闭区间。
 - `invariant()` 返回空字符串表示成立，否则返回错误说明。
 - 算法每次改变逻辑关系后显式记录关键步骤，保证访问、比较、旋转、下传与回溯可见。
 - `recording=false` 用于快速差分验证，不能影响算法结果。
@@ -39,10 +39,14 @@
 - 暂停同时冻结 Tween；红黑树的节点颜色在访问时保持，用蓝色外圈高亮。
 - 执行操作后适应整条轨迹的范围，避免新增节点落在画布之外。
 - 点击支持数组位置、区间节点、矩形两角、堆节点编号与 LCT 两个端点；区间增量不会被聚合值覆盖。
+- 所有面向用户的元素位置、行列、槽位、版本号均为 1-based；模型可保留 0-based 的数组存储偏移。ST 的层号 k 仍从 0 起，表示幂指数；无答案用“无”，待计算用“·”。
+- Canvas 适应范围及点击判断包含矩形完整宽高，ST 长条边缘也可选中；点击 ST 长条填入其完整覆盖区间。
 
 ## 算法实现
 
-- 线性表：数组移动、倍增容量；链表保存稳定编号和真实 next/prev；单调队列维护长度 3 的窗口。
+- 线性表：插入时从末尾逐个右移，每次只改变一个稳定 ID 的视觉槽位并记录快照；再插入新值并清空瞬时槽位。动态数组保留倍增复制。链表保存真实 next/prev，位置 1 更新 HEAD、n+1 更新 TAIL。
+- 单调结构：独立 `monotonic.gd`，默认 10 项原数组、横向候选下标、逐位置答案。单调栈弹出 ≤ 当前值的候选，取剩余栈顶作为左侧最近严格更大的下标；队列先过期、再弹出严格较小的队尾，取队首为固定窗口最左最大值下标。窗口可设为 1–n。
+- ST：第 k 层区间长 2^k；长条宽度为长度乘单元间距，中心与原数组覆盖对齐；第 i 个区间的行由内部偏移 i mod 2^k 决定，长度 2/4 分别错排为 2/4 行，减少重叠遮挡。
 - 哈希：11 槽位，开放寻址含删除标记；二次探测明确拒绝探测序列已满的插入。
 - 区间结构：一维/二维 Fenwick、静态 RMQ、lazy 下传、动态开点、二维行树与列树、路径复制版本。
 - 二叉堆与原地堆排序：上浮/下沉；二项堆按度链接；斐波那契堆延迟合并、mark 与级联切断。
@@ -67,10 +71,13 @@
 godot --headless --path . --editor --import --quit
 godot --headless --path . --script tests/test_models.gd
 godot --headless --path . --script tests/test_advanced.gd
+godot --headless --path . --script tests/test_teaching.gd
 godot --headless --path . --script tests/test_interactions.gd
 ```
 
 高级测试用数组多重集/有序集合/逐元素异或/独立 BFS 对照，不以被测模型的查询结果作为参考答案。覆盖随机交错操作、单调序列插删、空结构、重复键、跨版本分支与 LCT 翻转后聚合。场景测试覆盖全部默认操作的输入表单、播放、撤销以及错误回滚。
+
+教学回归验证每帧数组位移及次序、链表头尾与空表插入、单调结构逐元素暴力答案（含重复值和窗口 1/n）、ST 长条尺寸及覆盖、Splay 四类双旋的七节点完整拓扑。Splay 原有旋转顺序正确；动画说明明确区分绕祖父、绕父亲旋转和提升哪个节点。
 
 隔离环境可复制 Godot 可执行文件到 `.tools/godot`，并在同目录创建 `_sc_` 以保存编辑器配置。`--log-file` 必须传入项目内的**绝对路径**，防止编辑器将相对日志路径解释为 `user://`。
 
