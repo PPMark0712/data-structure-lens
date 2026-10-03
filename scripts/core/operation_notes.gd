@@ -11,7 +11,7 @@ static func describe(kind: String, action: String) -> String:
 					("先连接新节点与后继，再重接前驱；头插更新 HEAD。" if linked else "从末尾向前，将后续元素逐个右移，再写入新值。"),
 				"delete": "删除指定位置的元素；" + ("重接前驱与后继，并更新 HEAD / TAIL。" if linked else "后续元素左移以填补空位。"),
 				"update": ("沿 next 走到指定节点" if linked else "按下标定位元素") + "，将原值替换为新值，长度不变。",
-				"get": ("从 HEAD 沿 next 访问第 i 个节点，返回数值，耗时 O(n)。" if linked else "直接读取第 i 个位置的值，耗时 O(1)。"),
+				"get": ("从 HEAD 沿 next 访问第 k 个节点，返回数值，耗时 O(n)。" if linked else "直接读取第 i 个位置的值，耗时 O(1)。"),
 				"find": "从位置 1 开始逐个比较，返回第一个匹配值的位置；找不到则给出提示。",
 				"push": "把新值追加到末尾。容量不足时旧数组上移，下方申请两倍内存，逐个向下复制，最后释放旧内存。追加均摊 O(1)。",
 				"build": "清空当前结构，按输入顺序加入各元素。" + ("同时建立 next / prev 连接。" if linked else "静态数组最多 8 项；动态数组容量不足时倍增。")
@@ -19,6 +19,18 @@ static func describe(kind: String, action: String) -> String:
 			if kind == "dynamic_array":
 				notes.insert = "容量不足时先申请两倍内存，向下逐个复制并释放旧内存；再将插入点后的元素逐个右移，写入新值。位置 1 是头插，n+1 是尾插。"
 				notes.build = "清空数组并按输入顺序加入元素；容量不足时，旧数组上移，下方申请两倍内存，逐个复制完成后释放旧内存。"
+			elif kind == "linked":
+				notes.erase("insert")
+				notes.erase("update")
+				notes.insert_head = "创建新节点，使其 next 指向原首节点，再将 HEAD 改为新节点；无需遍历。"
+				notes.insert_tail = "创建新节点，使原尾节点 next 指向它，再更新 TAIL；空链表同时更新 HEAD。"
+				notes.delete = "删除首节点时直接移动 HEAD；否则从 HEAD 遍历到目标前驱，当 pre.next 是目标时令 pre.next = target.next，并按需更新 TAIL。"
+				notes.get_from_end = "令 fast 先沿 next 前进 k 步，再让 fast 与 slow 同步前进；fast 到达 NULL 时，slow 位于倒数第 k 个节点。"
+				notes.reverse_range = "先保存第 i 个节点的前驱 pre 与第 j 个节点的后继；将区间节点逐个移到下方并反转 next，再用 pre（i=1 时用 HEAD）和区间后继把新链表接回。"
+				notes.build = "清空链表，按输入顺序尾插各元素并建立 next 连接。"
+			elif kind == "doubly":
+				notes.erase("update")
+				notes.get_from_end = "令 fast 先沿 next 前进 k 步，再让 fast 与 slow 同步前进；fast 到达 NULL 时，slow 位于倒数第 k 个节点。"
 		"stack", "queue":
 			var stack := kind == "stack"
 			notes = {
@@ -114,10 +126,24 @@ static func describe(kind: String, action: String) -> String:
 			if kind == "splay": notes.delete = "把目标伸展到根并移除；将左子树最大节点伸展为新根，再接上右子树。"
 		"disjoint_set":
 			notes = {
-				"find": "递归沿 fa 指针找到代表元；回溯时执行 fa[x] = find(fa[x])，把路径上的元素逐个直接连接到根。",
-				"union": "分别路径压缩并查找 a、b 的代表元，再令 fa[find(a)] = find(b)。本实验不使用按秩或按大小合并。",
-				"connected": "分别执行带路径压缩的 find；两个代表元相同即连通，否则属于不同集合。",
-				"build": "创建 1–12 个元素，令每个 fa[i] = i；此时每个元素各自构成一个集合。"
+				"find": "递归沿 fa 指针找到代表元。路径压缩开启时，回溯逐个执行 fa[x] = find(fa[x])；关闭时只查询，不改树形。",
+				"union": "先查找 a、b 的代表元，再按当前策略合并：可关闭启发式，或选择按 rank／按 size 合并。",
+				"connected": "分别查找两个代表元；代表元相同即连通。是否压缩访问路径由开关决定。",
+				"build": "创建 1–12 个元素并令 fa[i] = i。路径压缩开关和合并策略同时应用。"
+			}
+		"weighted_disjoint_set":
+			notes = {
+				"relation": "添加约束 value[b] - value[a] = delta。weight[x] 保存 value[x] - value[fa[x]]，按 size 合并时计算两个根之间的差值；矛盾约束会被拒绝。",
+				"query": "若 a、b 连通，将两点到同一根的累计差值相减，得到 value[b] - value[a]；不连通时结果未知。",
+				"potential": "路径压缩并累计边权，返回 value[x] - value[root]。父指针改变时，weight 会同步改为到新父节点的差值。",
+				"build": "创建 1–12 个互不连通的元素；每个元素是根，初始 weight 为 0。"
+			}
+		"rollback_disjoint_set":
+			notes = {
+				"union": "不做路径压缩，按 size 将小树挂到大树，并把足以恢复 parent 与 size 的变更压入历史栈。",
+				"connected": "沿父指针查找两个代表元，不改写树形和历史；代表元相同即连通。",
+				"rollback": "按后进先出顺序撤销最近若干次合并。重复合并也占一个空变更记录，保证每次 union 都可对应撤销。",
+				"build": "创建 1–12 个单元素集合并清空合并历史。可撤销并查集固定按 size 合并，禁止路径压缩。"
 			}
 		"lct":
 			notes = {

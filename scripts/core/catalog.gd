@@ -4,8 +4,8 @@ extends RefCounted
 const ENTRIES := [
 	["线性结构", "array", "静态数组", "固定容量，按位置读写与移动元素", "linear"],
 	["线性结构", "dynamic_array", "动态数组", "Append 与倍增扩容，观察复制成本", "linear"],
-	["线性结构", "linked", "单向链表", "沿 next 访问、插入与断链", "linear"],
-	["线性结构", "doubly", "双向链表", "观察 next / prev 两个方向的连接", "linear"],
+	["线性结构", "linked", "单向链表", "查询、头尾插、断链与区间翻转", "linear"],
+	["线性结构", "doubly", "双向链表", "双向连接与正／倒数位置查询", "linear"],
 	["线性结构", "stack", "栈", "后进先出 LIFO，观察 TOP", "linear"],
 	["线性结构", "mono_stack", "单调栈", "逐个求左侧最近严格更大值的下标，栈顶朝右", "monotonic"],
 	["线性结构", "queue", "队列", "先进先出 FIFO，观察 HEAD / TAIL", "linear"],
@@ -13,6 +13,9 @@ const ENTRIES := [
 	["哈希表", "hash_linear", "线性探测", "h+i，冲突探测与删除标记", "hash_table"],
 	["哈希表", "hash_quadratic", "二次探测", "h+i²，有限探测序列与冲突", "hash_table"],
 	["哈希表", "hash_chain", "链地址法", "每个哈希桶维护一条冲突链", "hash_table"],
+	["并查集", "disjoint_set", "普通并查集", "路径压缩可开关；合并可选不开、按 rank 或按 size", "disjoint_set"],
+	["并查集", "weighted_disjoint_set", "带权并查集", "维护节点到父节点的差值，合并并查询相对关系", "disjoint_set"],
+	["并查集", "rollback_disjoint_set", "可撤销并查集", "按 size 合并且不压缩路径，用历史栈撤销合并", "disjoint_set"],
 	["区间结构", "fenwick", "一维树状数组", "lowbit 跳转，单点加与前缀和", "ranges"],
 	["区间结构", "fenwick2", "二维树状数组", "双层 lowbit 跳转与矩形求和", "ranges"],
 	["区间结构", "sparse_table", "ST 表", "幂次区间预处理，静态区间最小值", "ranges"],
@@ -31,7 +34,6 @@ const ENTRIES := [
 	["平衡树", "splay", "Splay 树", "Zig、Zig-Zig 与 Zig-Zag 伸展", "balanced"],
 	["平衡树", "red_black", "红黑树", "颜色约束、旋转与插入删除修复", "red_black"],
 	["动态树", "lct", "Link-Cut Tree", "动态森林连边 / 断边与路径聚合", "lct"],
-	["集合结构", "disjoint_set", "并查集", "路径压缩 find；不使用按秩或按大小合并", "disjoint_set"],
 ]
 
 static func create(entry: Array) -> LabModel:

@@ -28,7 +28,13 @@ func _run() -> void:
 			var fresh := LabCatalog.create(entry)
 			var args := {}
 			for field in operation.fields:
-				args[field.key] = field.initial if field.text else int(field.initial)
+				match field.get("type", "input"):
+					"toggle":
+						args[field.key] = field.initial
+					"options":
+						args[field.key] = field.initial
+					_:
+						args[field.key] = field.initial if field.text else int(field.initial)
 			var ok := fresh.perform(operation.id, args)
 			check(ok, "%s.%s default operation: %s" % [entry[1], operation.id, fresh.error])
 			check(fresh.invariant().is_empty(), "%s.%s invariant" % [entry[1], operation.id])
@@ -43,6 +49,8 @@ func _run() -> void:
 	_random_linear()
 	_random_hash()
 	_random_disjoint_set()
+	_random_weighted_disjoint_set()
+	_random_rollback_disjoint_set()
 	_random_ranges()
 	_random_segments()
 	print("Tested %d modules; %d checks; %d failures." % [count, checks, failures.size()])
@@ -83,8 +91,21 @@ func _random_linear() -> void:
 			var limit := 8 if kind == "array" else 16
 			if reference.is_empty() or (rng.randf() < 0.5 and reference.size() < limit):
 				var index := rng.randi_range(0, reference.size())
-				check(model.perform("insert", {"index": index + 1, "value": value}), "linear insert")
+				var action := "insert"
+				if kind == "linked":
+					index = 0 if rng.randf() < 0.5 else reference.size()
+					action = "insert_head" if index == 0 else "insert_tail"
+				check(model.perform(action, {"index": index + 1, "value": value}), "linear insert")
 				reference.insert(index, value)
+			elif kind == "linked" and reference.size() > 1 and rng.randf() < 0.35:
+				var left := rng.randi_range(0, reference.size() - 1)
+				var right := rng.randi_range(left, reference.size() - 1)
+				check(model.perform("reverse_range", {"l": left + 1, "r": right + 1}),
+					"linked random range reversal")
+				var reversed: Array = reference.slice(left, right + 1)
+				reversed.reverse()
+				for i in reversed.size():
+					reference[left + i] = reversed[i]
 			else:
 				var index := rng.randi_range(0, reference.size() - 1)
 				check(model.perform("delete", {"index": index + 1}), "linear delete")
@@ -121,31 +142,126 @@ func _disjoint_root(parents: Array[int], x: int) -> int:
 func _random_disjoint_set() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 744
-	var model := DisjointSetModel.new()
+	for strategy in ["none", "rank", "size"]:
+		for compress in [false, true]:
+			var model := DisjointSetModel.new()
+			model.recording = false
+			check(model.perform("build", {
+				"size": 12,
+				"path_compression": compress,
+				"union_strategy": strategy
+			}), "disjoint set build")
+			var groups: Array[int] = []
+			for i in range(13):
+				groups.append(i)
+			for round in 120:
+				var a := rng.randi_range(1, 12)
+				var b := rng.randi_range(1, 12)
+				if rng.randf() < 0.6:
+					var from := groups[a]
+					var to := groups[b]
+					check(model.perform("union", {"a": a, "b": b}),
+						"disjoint set union")
+					for i in range(1, 13):
+						if groups[i] == from:
+							groups[i] = to
+				else:
+					check(model.perform("connected", {"a": a, "b": b}),
+						"disjoint set connected")
+					check(model.connected_result == (groups[a] == groups[b]),
+						"disjoint set connectivity matches independent partition")
+				check(model.invariant().is_empty(), "disjoint set invariant")
+				for x in range(1, 13):
+					for y in range(1, 13):
+						check((_disjoint_root(model.parent, x) == _disjoint_root(model.parent, y)) ==
+							(groups[x] == groups[y]), "disjoint set differential partition")
+
+func _random_weighted_disjoint_set() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 745
+	var model := DisjointSetModel.new("weighted_disjoint_set")
 	model.recording = false
-	check(model.perform("build", {"size": 12}), "disjoint set build")
+	check(model.perform("build", {"size": 12}), "weighted disjoint set build")
 	var groups: Array[int] = []
+	var values: Array[int] = []
 	for i in range(13):
 		groups.append(i)
-	for round in 120:
+		values.append(rng.randi_range(-50, 50))
+	for round in 160:
 		var a := rng.randi_range(1, 12)
 		var b := rng.randi_range(1, 12)
-		if rng.randf() < 0.6:
+		if rng.randf() < 0.65:
 			var from := groups[a]
 			var to := groups[b]
-			check(model.perform("union", {"a": a, "b": b}), "disjoint set union")
+			check(model.perform("relation", {
+				"a": a, "b": b, "delta": values[b] - values[a]
+			}), "weighted disjoint set relation")
 			for i in range(1, 13):
 				if groups[i] == from:
 					groups[i] = to
 		else:
-			check(model.perform("connected", {"a": a, "b": b}), "disjoint set connected")
-			check(model.connected_result == (groups[a] == groups[b]),
-				"disjoint set connectivity matches independent partition")
-		check(model.invariant().is_empty(), "disjoint set invariant")
-		for x in range(1, 13):
-			for y in range(1, 13):
-				check((_disjoint_root(model.parent, x) == _disjoint_root(model.parent, y)) ==
-					(groups[x] == groups[y]), "disjoint set differential partition")
+			check(model.perform("query", {"a": a, "b": b}),
+				"weighted disjoint set query")
+			check(model.has_result == (groups[a] == groups[b]),
+				"weighted disjoint set connectivity")
+			if model.has_result:
+				check(model.result == values[b] - values[a],
+					"weighted disjoint set difference")
+		check(model.invariant().is_empty(), "weighted disjoint set invariant")
+	var connected_pair: Array[int] = []
+	for a in range(1, 13):
+		for b in range(1, 13):
+			if groups[a] == groups[b] and a != b:
+				connected_pair = [a, b]
+				break
+		if not connected_pair.is_empty():
+			break
+	if not connected_pair.is_empty():
+		var before := model.parent.duplicate()
+		check(not model.perform("relation", {
+			"a": connected_pair[0],
+			"b": connected_pair[1],
+			"delta": values[connected_pair[1]] - values[connected_pair[0]] + 1
+		}), "weighted disjoint set rejects contradiction")
+		check(model.parent == before, "contradiction does not mutate weighted forest")
+
+func _random_rollback_disjoint_set() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 746
+	var model := DisjointSetModel.new("rollback_disjoint_set")
+	model.recording = false
+	check(model.perform("build", {"size": 12}), "rollback disjoint set build")
+	var groups: Array[int] = []
+	for i in range(13):
+		groups.append(i)
+	var snapshots: Array = []
+	for round in 160:
+		if snapshots.is_empty() or rng.randf() < 0.65:
+			var a := rng.randi_range(1, 12)
+			var b := rng.randi_range(1, 12)
+			snapshots.append(groups.duplicate())
+			var from := groups[b]
+			var to := groups[a]
+			check(model.perform("union", {"a": a, "b": b}),
+				"rollback disjoint set union")
+			for i in range(1, 13):
+				if groups[i] == from:
+					groups[i] = to
+		else:
+			var steps := rng.randi_range(1, mini(3, snapshots.size()))
+			check(model.perform("rollback", {"steps": steps}),
+				"rollback disjoint set rollback")
+			for i in steps:
+				groups = snapshots.pop_back()
+		var x := rng.randi_range(1, 12)
+		var y := rng.randi_range(1, 12)
+		check(model.perform("connected", {"a": x, "b": y}),
+			"rollback disjoint set connected")
+		check(model.connected_result == (groups[x] == groups[y]),
+			"rollback disjoint set differential partition")
+		check(model.merge_history.size() == snapshots.size(),
+			"rollback history depth matches union calls")
+		check(model.invariant().is_empty(), "rollback disjoint set invariant")
 
 func _random_ranges() -> void:
 	if not ResourceLoader.exists("res://scripts/models/ranges.gd"): return

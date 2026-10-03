@@ -135,6 +135,8 @@ func _gui_input(event: InputEvent) -> void:
 					var point: Vector2 = (event.position - offset) / zoom
 					var positions := _interpolated_positions()
 					for node in current.get("nodes", []):
+						if not node.get("pickable", true):
+							continue
 						var node_size: Vector2 = node.get("size", Vector2(68, 68))
 						var position: Vector2 = positions[str(node.id)]
 						if Rect2(position - node_size / 2, node_size).has_point(point):
@@ -222,14 +224,15 @@ func _draw_vertex(node: Dictionary, position: Vector2, alpha: float, active: boo
 	fill.a = alpha
 	ink.a = alpha
 	var outline := Color(INK, alpha)
-	if active and node.get("tone", "") in ["red", "black"]:
+	var shape := str(node.get("shape", "circle"))
+	if shape != "label" and active and node.get("tone", "") in ["red", "black"]:
 		draw_arc(position, 32, 0, TAU, 48, Color("#268bd2", alpha), 3, true)
-	if node.get("shape", "circle") == "box":
+	if shape == "box":
 		var node_size: Vector2 = node.get("size", Vector2(58, 48))
 		var rect := Rect2(position - node_size / 2, node_size)
 		draw_rect(rect, fill)
 		draw_rect(rect, outline, false, 2 if active else 1.5)
-	else:
+	elif shape == "circle":
 		draw_circle(position, 27, fill)
 		draw_arc(position, 27, 0, TAU, 48, outline, 2 if active else 1.5, true)
 	var lines: Array = node.get("lines", [str(node.label)])

@@ -12,6 +12,12 @@ func check(condition: bool, message: String) -> void:
 		failures += 1
 		printerr("FAIL: " + message)
 
+func _entry(kind: String) -> Array:
+	for entry in LabCatalog.ENTRIES:
+		if entry[1] == kind:
+			return entry
+	return []
+
 func _run() -> void:
 	var ui: Control = load("res://scenes/main.tscn").instantiate()
 	root.add_child(ui)
@@ -35,7 +41,7 @@ func _run() -> void:
 			check(ui.model.invariant().is_empty(), entry[1] + " undo invariant")
 			check(ui.history.is_empty(), entry[1] + " undo history consumed")
 	# Parse error and model validation leave both state and history untouched.
-	ui._select(LabCatalog.ENTRIES[0])
+	ui._select(_entry("array"))
 	var before: Dictionary = ui.model.view().duplicate(true)
 	ui.editors.index.text = "invalid"
 	ui.execute_button.pressed.emit()
@@ -76,28 +82,51 @@ func _run() -> void:
 	check(ui.canvas._interpolated_positions().moving == Vector2(25, 0),
 		"click hit testing shares the current interpolated node position")
 	# Clicking coordinate/ID nodes fills the intended fields.
-	ui._select(LabCatalog.ENTRIES[11]) # Fenwick
+	ui._select(_entry("fenwick"))
 	ui._pick_node("a2")
 	check(ui.editors.index.text == "3" and ui.editors.value.text == "5", "Fenwick click index preserves delta")
 	ui._choose_operation(1)
 	ui._pick_node("a1")
 	ui._pick_node("a5")
 	check(ui.editors.l.text == "2" and ui.editors.r.text == "6", "range endpoints alternate")
-	ui._select(LabCatalog.ENTRIES[12]) # 2D Fenwick
+	ui._select(_entry("fenwick2"))
 	ui._pick_node("a2_3")
 	check(ui.editors.x.text == "2" and ui.editors.y.text == "3", "matrix coordinate picking")
-	ui._select(LabCatalog.ENTRIES[2]) # Linked head picking uses position 1.
-	ui._pick_node(str(ui.model.head))
-	check(ui.editors.index.text == "1", "linked head picks position 1")
+	ui._select(_entry("linked"))
+	check(ui.model.operations()[0].title == "头插" and ui.model.operations()[1].title == "尾插",
+		"singly linked list exposes dedicated endpoint insertion controls")
+	check(not ui.model.operations().map(func(operation): return operation.id).has("update"),
+		"singly linked list removes value update")
 	ui.editors.value.text = "99"
 	ui.execute_button.pressed.emit()
 	check(ui.model.items[0].value == 99, "linked form inserts before head")
 	ui._undo()
 	check(ui.model.items[0].value == 12, "linked head insertion undo")
-	ui._select(LabCatalog.ENTRIES[16]) # 2D segment
+	ui._choose_operation(2)
+	ui._pick_node(str(ui.model.items[2].id))
+	check(ui.editors.index.text == "3", "linked delete target picks its position")
+	ui.execute_button.pressed.emit()
+	check(ui.model.items.map(func(item): return item.value) == [12, 7, 16],
+		"linked form deletes through the target predecessor")
+	ui._undo()
+	ui._choose_operation(5)
+	ui._pick_node(str(ui.model.items[1].id))
+	ui._pick_node(str(ui.model.items[3].id))
+	check(ui.editors.l.text == "2" and ui.editors.r.text == "4",
+		"linked node picks fill both reversal endpoints")
+	ui.execute_button.pressed.emit()
+	ui._go(ui.trace.size() - 1)
+	check(ui.model.items.map(func(item): return item.value) == [12, 16, 24, 7],
+		"linked reversal executes from the form")
+	ui._undo()
+	ui._select(_entry("doubly"))
+	check(not ui.model.operations().map(func(operation): return operation.id).has("update")
+		and ui.model.operations().map(func(operation): return operation.id).has("get_from_end"),
+		"doubly linked form removes update and adds kth-from-end")
+	ui._select(_entry("segment2"))
 	ui._pick_node("a1_4")
 	check(ui.editors.x.text == "1" and ui.editors.y.text == "4", "2D segment uses 1-based cells")
-	ui._select(LabCatalog.ENTRIES[13]) # ST bar endpoints
+	ui._select(_entry("sparse_table"))
 	check(ui.code_label.get_parsed_text().contains("st[i][0] = a[i]"), "literal indices survive text rendering")
 	ui._pick_node("s2_1")
 	check(ui.editors.l.text == "2" and ui.editors.r.text == "5", "ST bar fills covered interval")
@@ -117,7 +146,7 @@ func _run() -> void:
 		var right: Vector2 = (node.pos + node.size / 2) * ui.canvas.zoom + ui.canvas.offset
 		check(Rect2(Vector2.ZERO, ui.canvas.size).has_point(left) and
 			Rect2(Vector2.ZERO, ui.canvas.size).has_point(right), "ST fit contains entire bar")
-	ui._select(LabCatalog.ENTRIES[14]) # Segment interval/source picking and retained highlights.
+	ui._select(_entry("segment")) # Segment interval/source picking and retained highlights.
 	ui._pick_node("a2")
 	ui._pick_node("a6")
 	check(ui.editors.l.text == "2" and ui.editors.r.text == "6" and ui.editors.value.text == "5",
@@ -133,16 +162,21 @@ func _run() -> void:
 	ui._go(ui.trace.size() - 1)
 	ui._undo()
 	check(ui.model.view() == retained, "undo restores previous range highlights and source array")
-	ui._select(LabCatalog.ENTRIES[20]) # Fibonacci
+	ui._select(_entry("fibonacci"))
 	ui._choose_operation(2)
 	ui._pick_node("8")
 	check(ui.editors.id.text == "8", "heap node ID picking")
-	ui._select(LabCatalog.ENTRIES[28]) # LCT
+	ui._select(_entry("lct"))
 	ui._pick_node("v2")
 	ui._pick_node("a5")
 	check(ui.editors.u.text == "2" and ui.editors.v.text == "5", "LCT endpoints alternate")
-	ui._select(LabCatalog.ENTRIES[29]) # Disjoint set
+	ui._select(_entry("disjoint_set"))
 	ui._choose_operation(1)
+	check(ui.editors.path_compression is CheckButton and
+		ui.editors.union_strategy is OptionButton,
+		"disjoint-set settings use toggle and option controls")
+	ui.editors.path_compression.button_pressed = false
+	ui.editors.union_strategy.selected = 2
 	ui._pick_node("d1")
 	ui._pick_node("d5")
 	check(ui.editors.a.text == "1" and ui.editors.b.text == "5",
@@ -150,13 +184,26 @@ func _run() -> void:
 	var disjoint_before: Dictionary = ui.model.view().duplicate(true)
 	ui.execute_button.pressed.emit()
 	ui._go(ui.trace.size() - 1)
-	check(ui.model.parent[3] == 6, "disjoint-set form joins representatives")
+	check(ui.model.parent[3] == 6 and not ui.model.path_compression and
+		ui.model.union_strategy == "size",
+		"disjoint-set form applies size union and compression toggle")
 	ui._undo()
 	check(ui.model.view() == disjoint_before, "disjoint-set undo restores exact forest")
 	ui._choose_operation(0)
 	ui._pick_node("d3")
 	check(ui.editors.x.text == "3", "disjoint-set node fills find argument")
-	ui._select(LabCatalog.ENTRIES[25]) # Treap deterministic RNG through undo
+	ui._select(_entry("weighted_disjoint_set"))
+	ui._choose_operation(1)
+	ui._pick_node("d1")
+	ui._pick_node("d3")
+	check(ui.editors.a.text == "1" and ui.editors.b.text == "3",
+		"weighted disjoint-set endpoints alternate")
+	ui._select(_entry("rollback_disjoint_set"))
+	ui._pick_node("d7")
+	ui._pick_node("d8")
+	check(ui.editors.a.text == "7" and ui.editors.b.text == "8",
+		"rollback disjoint-set endpoints alternate")
+	ui._select(_entry("treap")) # Treap deterministic RNG through undo
 	ui.execute_button.pressed.emit()
 	var first: Dictionary = ui.model.view().duplicate(true)
 	ui._undo()

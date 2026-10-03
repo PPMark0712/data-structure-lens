@@ -285,13 +285,31 @@ func _choose_operation(index: int) -> void:
 	operation_note.text = "操作说明\n" + selected_op.note
 	pick_second = false
 	for spec in selected_op.fields:
-		fields_box.add_child(_label(spec.title, 14))
-		var editor := LineEdit.new()
-		editor.text = spec.initial
-		editor.placeholder_text = spec.title
-		editor.text_submitted.connect(func(_text): _execute())
-		fields_box.add_child(editor)
-		editors[spec.key] = editor
+		var field_type: String = spec.get("type", "input")
+		if field_type == "toggle":
+			var toggle := CheckButton.new()
+			toggle.text = spec.title
+			toggle.button_pressed = spec.initial
+			fields_box.add_child(toggle)
+			editors[spec.key] = toggle
+		else:
+			fields_box.add_child(_label(spec.title, 14))
+			if field_type == "options":
+				var picker := OptionButton.new()
+				for option in spec.options:
+					picker.add_item(option.label)
+					picker.set_item_metadata(picker.item_count - 1, option.value)
+					if option.value == spec.initial:
+						picker.selected = picker.item_count - 1
+				fields_box.add_child(picker)
+				editors[spec.key] = picker
+			else:
+				var editor := LineEdit.new()
+				editor.text = spec.initial
+				editor.placeholder_text = spec.title
+				editor.text_submitted.connect(func(_text): _execute())
+				fields_box.add_child(editor)
+				editors[spec.key] = editor
 
 func _execute() -> void:
 	if playing or cursor < trace.size() - 1:
@@ -299,6 +317,14 @@ func _execute() -> void:
 		return
 	var args := {}
 	for spec in selected_op.fields:
+		var field_type: String = spec.get("type", "input")
+		if field_type == "toggle":
+			args[spec.key] = editors[spec.key].button_pressed
+			continue
+		if field_type == "options":
+			var picker: OptionButton = editors[spec.key]
+			args[spec.key] = picker.get_item_metadata(picker.selected)
+			continue
 		var text: String = editors[spec.key].text.strip_edges()
 		if not spec.text:
 			if not text.is_valid_int():
@@ -464,7 +490,7 @@ func _pick_node(id: String) -> void:
 			if editors.has("u"):
 				fill["v" if pick_second else "u"] = int(id.substr(1))
 				pick_second = not pick_second
-		if model.kind == "disjoint_set" and id.begins_with("d"):
+		if model.kind in ["disjoint_set", "weighted_disjoint_set", "rollback_disjoint_set"] and id.begins_with("d"):
 			var element := int(id.substr(1))
 			if editors.has("x"):
 				fill["x"] = element

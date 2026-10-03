@@ -17,6 +17,7 @@ func _run() -> void:
 	_array_deletes()
 	_array_migration()
 	_linked_heads()
+	_linked_queries_and_reverse()
 	_stack_container()
 	_hash_layout()
 	_disjoint_set()
@@ -35,6 +36,13 @@ func _positions(frame: Dictionary) -> Dictionary:
 	for node in frame.nodes:
 		if str(node.id).is_valid_int(): result[node.id] = node.pos
 	return result
+
+func _has_edge(frame: Dictionary, from: String, to: String,
+		label: String = "", dashed: bool = false) -> bool:
+	for link in frame.edges:
+		if link.from == from and link.to == to and link.label == label and link.dashed == dashed:
+			return true
+	return false
 
 func _stack_container() -> void:
 	var model := LinearModel.new("stack")
@@ -104,9 +112,8 @@ func _disjoint_set() -> void:
 			"disjoint set keeps parent labels inside nodes")
 	check(initial.edges.all(func(link): return link.label.is_empty()),
 		"disjoint set arrows do not duplicate parent labels")
-	check(model.code[0] ==
-		"int find(int x) { return x == fa[x] ? x : fa[x] = find(fa[x]); }",
-		"disjoint set presents the requested path-compression find")
+	check(model.code[1] == "路径压缩开启时：fa[x] = find(fa[x])",
+		"disjoint set presents the path-compression assignment")
 	check(model.perform("build", {"size": 6}), "prepare a long path for compression")
 	model.parent[1] = 2
 	model.parent[2] = 3
@@ -128,18 +135,79 @@ func _disjoint_set() -> void:
 	check(changed == [[2, 4], [1, 4]], "path compression rewrites parents during recursion unwind")
 	var deepest: Array = model.frames.map(func(frame): return frame.calls.size())
 	check(deepest.max() == 4, "find exposes the complete recursive call stack")
+	check(model.perform("build", {
+		"size": 6, "path_compression": false, "union_strategy": "none"
+	}), "disable path compression")
+	model.parent[1] = 2
+	model.parent[2] = 3
+	model.parent[3] = 4
+	check(model.perform("find", {"x": 1}), "find without path compression")
+	check(model.parent.slice(1, 5) == [2, 3, 4, 4],
+		"disabled path compression preserves the full path")
+	check(model.frames.any(func(frame): return frame.message.contains("路径压缩关闭")),
+		"disabled path compression is explicit in the animation")
 	model = DisjointSetModel.new()
 	check(model.perform("union", {"a": 1, "b": 8}), "disjoint set union")
 	check(model.parent[3] == 8, "union attaches find(a) directly below find(b)")
-	check(model.frames[-1].message.contains("不使用按秩或按大小合并"),
-		"union animation states that no rank or size heuristic is used")
+	check(model.frames[-1].message.contains("未启用合并启发式"),
+		"union animation states that no heuristic is enabled")
 	check(model.perform("connected", {"a": 1, "b": 8}) and model.connected_result,
 		"connected uses compressed representatives")
+	check(model.perform("build", {
+		"size": 6, "path_compression": true, "union_strategy": "rank"
+	}), "enable union by rank")
+	check(model.perform("union", {"a": 1, "b": 2}), "rank union first pair")
+	check(model.perform("union", {"a": 3, "b": 2}), "rank union keeps taller root")
+	check(model.parent[1] == 2 and model.parent[3] == 2 and model.rank[2] == 1,
+		"rank union attaches the shallower tree")
+	check(model.perform("build", {
+		"size": 6, "path_compression": true, "union_strategy": "size"
+	}), "enable union by size")
+	check(model.perform("union", {"a": 1, "b": 2}), "size union first pair")
+	check(model.perform("union", {"a": 1, "b": 3}), "size union keeps larger root")
+	check(model.parent[3] == 2 and model.size[2] == 3,
+		"size union attaches the smaller component")
 	check(model.perform("build", {"size": 12}), "disjoint set rebuild")
 	for i in range(1, 13):
 		check(model.parent[i] == i, "rebuild starts each element as its own representative")
 	check(not model.perform("find", {"x": 0}), "disjoint set rejects zero")
 	check(not model.perform("build", {"size": 13}), "disjoint set enforces teaching limit")
+	var weighted := DisjointSetModel.new("weighted_disjoint_set")
+	check(weighted.view().nodes.all(func(node): return node.lines.size() == 3),
+		"weighted disjoint set shows parent and edge weight inside every node")
+	check(weighted.perform("query", {"a": 1, "b": 3}),
+		"weighted disjoint set queries an existing relation")
+	check(weighted.has_result and weighted.result == 1,
+		"weighted query returns value[3] - value[1]")
+	check(weighted.parent[1] == 3 and weighted.weight[1] == -1,
+		"weighted path compression preserves accumulated potential")
+	check(weighted.perform("relation", {"a": 1, "b": 4, "delta": 7}),
+		"weighted disjoint set joins two components")
+	check(weighted.perform("query", {"a": 1, "b": 4}) and weighted.result == 7,
+		"weighted union preserves the requested difference")
+	var weighted_before := weighted.parent.duplicate()
+	check(not weighted.perform("relation", {"a": 1, "b": 4, "delta": 8}),
+		"weighted disjoint set rejects a contradictory relation")
+	check(weighted.parent == weighted_before,
+		"contradictory weighted relation leaves the forest unchanged")
+	var rollback := DisjointSetModel.new("rollback_disjoint_set")
+	check(rollback.merge_history.size() == 4,
+		"rollback disjoint set default example has visible history")
+	var rollback_parent := rollback.parent.duplicate()
+	var rollback_size := rollback.size.duplicate()
+	check(rollback.perform("union", {"a": 7, "b": 8}),
+		"rollback disjoint set records a merge")
+	check(rollback.parent[8] == 7 and rollback.merge_history.size() == 5,
+		"rollback union uses size and pushes history")
+	check(rollback.perform("rollback", {"steps": 1}),
+		"rollback disjoint set restores the latest merge")
+	check(rollback.parent == rollback_parent and rollback.size == rollback_size,
+		"rollback restores parent and size exactly")
+	var before_find := rollback.parent.duplicate()
+	check(rollback.perform("connected", {"a": 2, "b": 4}) and rollback.connected_result,
+		"rollback disjoint set answers connectivity")
+	check(rollback.parent == before_find,
+		"rollback disjoint set never compresses paths")
 
 func _array_moves() -> void:
 	for kind in ["array", "dynamic_array"]:
@@ -259,20 +327,194 @@ func _array_migration() -> void:
 func _linked_heads() -> void:
 	for kind in ["linked", "doubly"]:
 		var model := LinearModel.new(kind)
+		var initial := model.view()
+		var marker_ids := ["head_marker", "tail_marker", "next_null"]
+		if kind == "doubly":
+			marker_ids.append("prev_null")
+		var markers: Array = initial.nodes.filter(func(node): return node.id in marker_ids)
+		var head_node: Dictionary = initial.nodes.filter(
+			func(node): return node.id == str(model.head))[0]
+		var tail_node: Dictionary = initial.nodes.filter(
+			func(node): return node.id == str(model.tail))[0]
+		check(markers.size() == marker_ids.size() and markers.all(
+			func(node): return node.shape == "label" and not node.pickable),
+			kind + " renders non-interactive pointer labels")
+		check(initial.nodes.filter(func(node): return node.id == "head_marker")[0].pos.y < head_node.pos.y
+			and initial.nodes.filter(func(node): return node.id == "tail_marker")[0].pos.y < tail_node.pos.y,
+			kind + " places HEAD and TAIL above their nodes")
+		check(_has_edge(initial, "head_marker", str(model.head))
+			and _has_edge(initial, "tail_marker", str(model.tail)),
+			kind + " points HEAD and TAIL down to the endpoint nodes")
+		var next_null: Dictionary = initial.nodes.filter(func(node): return node.id == "next_null")[0]
+		check(next_null.pos.x > tail_node.pos.x
+			and _has_edge(initial, str(model.tail), "next_null", "next"),
+			kind + " tail next points right to NULL")
+		if kind == "doubly":
+			var prev_null: Dictionary = initial.nodes.filter(func(node): return node.id == "prev_null")[0]
+			check(prev_null.pos.x < head_node.pos.x
+				and _has_edge(initial, str(model.head), "prev_null", "prev", true),
+				"head prev points left to NULL")
+			check(model._by_id(model.head).prev == 0 and model._by_id(model.tail).next == 0,
+				"rendered NULL pointers match the stored endpoints")
+		else:
+			check(initial.nodes.all(func(node): return node.id != "prev_null"),
+				"singly linked list does not render a prev pointer")
+			var operation_ids: Array = model.operations().map(func(operation): return operation.id)
+			check(operation_ids.slice(0, 2) == ["insert_head", "insert_tail"]
+				and not operation_ids.has("insert"),
+				"singly linked list exposes only head and tail insertion")
+			var deletion := LinearModel.new("linked")
+			var predecessor_id := str(deletion.items[1].id)
+			var target_id := str(deletion.items[2].id)
+			var successor_id: int = deletion.items[3].id
+			check(deletion.perform("delete", {"index": 3}), "singly linked middle deletion")
+			var visits: Array = deletion.frames.filter(
+				func(frame): return frame.message.begins_with("沿 next"))
+			check(visits.size() == 2 and visits[-1].active == [predecessor_id],
+				"singly linked deletion traverses only through the predecessor")
+			var unlink: Array = deletion.frames.filter(
+				func(frame): return frame.message.contains("删除 next"))
+			check(unlink.size() == 1 and unlink[0].active == [predecessor_id, target_id],
+				"singly linked deletion removes the predecessor's next node")
+			check(deletion._by_id(int(predecessor_id)).next == successor_id
+				and deletion.items.map(func(item): return item.value) == [12, 7, 16],
+				"singly linked deletion reconnects next to the target successor")
+			check(deletion.frames[-1].message == "前驱 next 改指向目标的后继，长度减一",
+				"singly linked middle deletion does not claim to update TAIL")
+			check(deletion.perform("delete", {"index": 3}), "singly linked tail deletion")
+			check(deletion.tail == int(predecessor_id) and deletion._by_id(deletion.tail).next == 0
+				and deletion.frames[-1].message.contains("TAIL 改为前驱"),
+				"singly linked tail deletion updates TAIL and terminates next")
 		var old_head := model.head
-		check(model.perform("insert", {"index": 1, "value": 99}), "head insert accepted")
+		var head_action := "insert_head" if kind == "linked" else "insert"
+		check(model.perform(head_action, {"index": 1, "value": 99}), "head insert accepted")
 		check(model._by_id(model.head).value == 99, "head points at new element")
 		check(model._by_id(model.head).next == old_head, "head connects to former head")
-		check(model.perform("insert", {"index": model.items.size() + 1, "value": 88}), "tail insert")
+		var tail_action := "insert_tail" if kind == "linked" else "insert"
+		check(model.perform(tail_action, {
+			"index": model.items.size() + 1, "value": 88
+		}), "tail insert")
 		check(model._by_id(model.tail).value == 88, "tail updated")
 		check(model.invariant().is_empty(), "head/tail/prev/next preserved")
 		while not model.items.is_empty():
 			check(model.perform("delete", {"index": 1}), "delete head")
 			check(model.invariant().is_empty(), "head deletion invariant")
 		check(model.head == 0 and model.tail == 0, "empty list pointers")
-		check(model.perform("insert", {"index": 1, "value": 7}), "empty head insertion")
+		if kind == "linked":
+			check(model.frames[-1].message.contains("HEAD 和 TAIL 均指向 NULL"),
+				"singly linked singleton deletion clears both endpoint pointers")
+		check(model.perform(head_action, {"index": 1, "value": 7}), "empty head insertion")
 		check(model.head == model.tail and model.invariant().is_empty(), "singleton pointers")
-		check(not model.perform("insert", {"index": 0, "value": 7}), "zero position rejected")
+		if kind == "linked":
+			check(model.frames[-1].message.contains("HEAD 和 TAIL 均指向它"),
+				"singly linked empty insertion sets both endpoint pointers")
+		var singleton := model.view()
+		var head_marker: Dictionary = singleton.nodes.filter(
+			func(node): return node.id == "head_marker")[0]
+		var tail_marker: Dictionary = singleton.nodes.filter(
+			func(node): return node.id == "tail_marker")[0]
+		check(head_marker.pos.x < tail_marker.pos.x,
+			kind + " singleton HEAD and TAIL labels do not overlap")
+		if kind == "linked":
+			check(not model.perform("insert", {"index": 2, "value": 7}),
+				"singly linked list rejects arbitrary insertion")
+		else:
+			check(not model.perform("insert", {"index": 0, "value": 7}), "zero position rejected")
+
+func _linked_queries_and_reverse() -> void:
+	for kind in ["linked", "doubly"]:
+		var model := LinearModel.new(kind)
+		var ids: Array = model.items.map(func(item): return str(item.id))
+		var operations: Array = model.operations()
+		var operation_ids: Array = operations.map(func(operation): return operation.id)
+		check(not operation_ids.has("update"), kind + " removes value update")
+		check(operation_ids.has("get") and operation_ids.has("get_from_end"),
+			kind + " exposes both kth queries")
+		check(operations.filter(func(operation): return operation.id == "get")[0].title
+			== "查询第 k 个", kind + " names forward kth query")
+		check(model.perform("get", {"index": 3}), kind + " queries kth node")
+		check(model.frames[-1].active == [ids[2]]
+			and model.frames[-1].message.contains("24"),
+			kind + " forward kth query returns the visited node")
+		check(model.perform("get_from_end", {"index": 2}), kind + " queries kth node from end")
+		var fast_steps: Array = model.frames.filter(
+			func(frame): return frame.message.begins_with("fast 沿 next 前进第"))
+		var tandem_steps: Array = model.frames.filter(
+			func(frame): return frame.message == "fast 与 slow 同步沿 next 前进")
+		check(fast_steps.size() == 2 and tandem_steps.size() == 2,
+			kind + " kth-from-end uses the two-pointer distance")
+		check(model.frames[-1].active == [ids[2]]
+			and model.frames[-1].message.contains("24"),
+			kind + " kth-from-end returns the slow pointer node")
+		var values: Array = model.items.map(func(item): return item.value)
+		check(not model.perform("update", {"index": 2, "value": 99})
+			and model.items.map(func(item): return item.value) == values,
+			kind + " rejects hidden value updates")
+		check(not model.perform("get_from_end", {"index": 0}), kind + " rejects k = 0")
+		check(not model.perform("get", {"index": 5}), kind + " rejects k beyond length")
+
+	var middle := LinearModel.new("linked")
+	var original_ids: Array = middle.items.map(func(item): return str(item.id))
+	check(middle.perform("reverse_range", {"l": 2, "r": 4}), "reverse linked suffix")
+	check(middle.items.map(func(item): return item.value) == [12, 16, 24, 7]
+		and middle.invariant().is_empty(), "reverse linked suffix preserves structure")
+	var reverse_frames: Array = middle.frames.filter(
+		func(frame): return frame.get("reversal", {}).get("phase", "") == "reverse")
+	check(reverse_frames.size() == 3, "each reversed node gets one lower-row frame")
+	for i in reverse_frames.size():
+		var positions := _positions(reverse_frames[i])
+		for processed_id in reverse_frames[i].reversal.processed:
+			check(positions[str(processed_id)].y == 410,
+				"processed reversal node is moved to the lower row")
+	var complete_lower: Dictionary = reverse_frames[-1]
+	check(_has_edge(complete_lower, original_ids[3], original_ids[2], "next")
+		and _has_edge(complete_lower, original_ids[2], original_ids[1], "next"),
+		"lower row forms the reversed next chain")
+	check(complete_lower.nodes.any(func(node): return node.id == "reverse_pre")
+		and _has_edge(complete_lower, "reverse_pre", original_ids[0]),
+		"reversal keeps a visible pre pointer")
+	var link_pre: Array = middle.frames.filter(
+		func(frame): return frame.get("reversal", {}).get("phase", "") == "link_pre")
+	check(link_pre.size() == 1
+		and _has_edge(link_pre[0], original_ids[0], original_ids[3], "next"),
+		"pre.next reconnects to the reversed head")
+	var link_after: Array = middle.frames.filter(
+		func(frame): return frame.get("reversal", {}).get("phase", "") == "link_after")
+	check(link_after.size() == 1
+		and _has_edge(link_after[0], original_ids[1], "next_null", "next")
+		and _has_edge(link_after[0], "tail_marker", original_ids[1]),
+		"reversed suffix reconnects NULL and updates TAIL")
+	check(_positions(middle.frames[-1])[original_ids[3]].y == 200,
+		"reconnected reversed nodes return to the main row")
+
+	var prefix := LinearModel.new("linked")
+	var prefix_ids: Array = prefix.items.map(func(item): return str(item.id))
+	check(prefix.perform("reverse_range", {"l": 1, "r": 3}), "reverse linked prefix")
+	check(prefix.items.map(func(item): return item.value) == [24, 7, 12, 16]
+		and prefix.head == int(prefix_ids[2]), "prefix reversal updates HEAD")
+	var prefix_link: Array = prefix.frames.filter(
+		func(frame): return frame.get("reversal", {}).get("phase", "") == "link_after")
+	check(prefix_link.size() == 1
+		and _has_edge(prefix_link[0], prefix_ids[0], prefix_ids[3], "next"),
+		"reversed prefix reconnects to its saved successor")
+	check(prefix.frames.any(func(frame): return frame.get("reversal", {}).get(
+		"phase", "") == "save" and frame.nodes.any(
+			func(node): return node.id == "reverse_pre" and node.label == "pre = NULL")),
+		"reversal from HEAD records a NULL pre")
+
+	var whole := LinearModel.new("linked")
+	check(whole.perform("reverse_range", {"l": 1, "r": 4}), "reverse entire linked list")
+	check(whole.items.map(func(item): return item.value) == [16, 24, 7, 12]
+		and whole.head == whole.items[0].id and whole.tail == whole.items[-1].id
+		and whole.invariant().is_empty(), "whole reversal updates both endpoints")
+	var singleton := LinearModel.new("linked")
+	var singleton_ids: Array = singleton.items.map(func(item): return item.id)
+	check(singleton.perform("reverse_range", {"l": 2, "r": 2}),
+		"single-node range reversal")
+	check(singleton.items.map(func(item): return item.id) == singleton_ids
+		and singleton.invariant().is_empty(), "single-node reversal is structurally neutral")
+	check(not singleton.perform("reverse_range", {"l": 3, "r": 2}),
+		"reverse rejects i greater than j")
 
 func _monotonic() -> void:
 	var rng := RandomNumberGenerator.new()

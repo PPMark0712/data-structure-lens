@@ -54,7 +54,20 @@ func op(id: String, title: String, fields: Array = []) -> Dictionary:
 	return {"id": id, "title": title, "fields": fields, "note": OperationNotes.describe(kind, id)}
 
 func field(key: String, title: String, initial: String, text: bool = false) -> Dictionary:
-	return {"key": key, "title": title, "initial": initial, "text": text}
+	return {"key": key, "title": title, "initial": initial, "text": text, "type": "input"}
+
+func toggle_field(key: String, title: String, initial: bool) -> Dictionary:
+	return {"key": key, "title": title, "initial": initial, "text": false, "type": "toggle"}
+
+func options_field(key: String, title: String, initial: String, options: Array) -> Dictionary:
+	return {
+		"key": key,
+		"title": title,
+		"initial": initial,
+		"text": true,
+		"type": "options",
+		"options": options
+	}
 
 func vertex(id: Variant, label: Variant, x: float, y: float,
 		detail: String = "", shape: String = "circle", tone: String = "") -> Dictionary:
