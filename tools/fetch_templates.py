@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch only the Web templates from Godot's large release archive (HTTP Range)."""
+"""Fetch selected Godot export templates from the official archive using HTTP ranges."""
 import argparse
 import io
 from pathlib import Path
@@ -8,24 +8,54 @@ import zipfile
 
 VERSION = "4.7.2"
 ROOT = Path(__file__).resolve().parents[1]
+TEMPLATE_NAMES = {
+    "web": ["web_nothreads_release.zip"],
+    "windows": ["windows_release_x86_64.exe"],
+    "macos": ["macos.zip"],
+}
 WEB_TEMPLATE_MEMBERS = {"godot.html", "godot.js", "godot.wasm"}
 
 
-def template_ready(path):
+def _valid_zip(path, required_members=(), required_suffix=""):
     if not path.is_file() or not zipfile.is_zipfile(path):
         return False
     try:
         with zipfile.ZipFile(path) as archive:
-            return WEB_TEMPLATE_MEMBERS.issubset(archive.namelist()) and archive.testzip() is None
+            names = archive.namelist()
+            return (
+                set(required_members).issubset(names)
+                and (not required_suffix or any(name.endswith(required_suffix) for name in names))
+                and archive.testzip() is None
+            )
     except (OSError, zipfile.BadZipFile):
         return False
 
 
+def template_ready(path):
+    path = Path(path)
+    if path.name.startswith("web_"):
+        return _valid_zip(path, WEB_TEMPLATE_MEMBERS)
+    if path.name == "macos.zip":
+        return _valid_zip(path, required_suffix="godot_macos_release.universal")
+    if path.name.startswith("windows_release_") and path.suffix == ".exe":
+        if not path.is_file() or path.stat().st_size < 1024 * 1024:
+            return False
+        try:
+            with path.open("rb") as stream:
+                return stream.read(2) == b"MZ"
+        except OSError:
+            return False
+    return False
+
+
 class RemoteZip(io.RawIOBase):
     def __init__(self, url):
+        super().__init__()
         self.url = url
         self.position = 0
-        with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=60) as response:
+        with urllib.request.urlopen(
+            urllib.request.Request(url, method="HEAD"), timeout=60
+        ) as response:
             self.size = int(response.headers["Content-Length"])
         self.tail_start = max(0, self.size - 65536)
         request = urllib.request.Request(
@@ -67,33 +97,51 @@ class RemoteZip(io.RawIOBase):
         return data
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--debug", action="store_true", help="also fetch the single-thread debug template")
-    args = parser.parse_args()
+def ensure_templates(platforms):
+    platforms = set(platforms)
+    unknown = platforms.difference(TEMPLATE_NAMES)
+    if unknown:
+        raise ValueError(f"Unknown template platforms: {sorted(unknown)}")
     target = ROOT / ".tools" / "templates"
     target.mkdir(parents=True, exist_ok=True)
-    names = ["web_nothreads_release.zip"] + (["web_nothreads_debug.zip"] if args.debug else [])
+    names = [name for platform in sorted(platforms) for name in TEMPLATE_NAMES[platform]]
     missing = [name for name in names if not template_ready(target / name)]
     if not missing:
-        print(f"Templates ready: {target}")
+        print(f"Templates ready: {target}", flush=True)
         return
     url = (
         f"https://github.com/godotengine/godot/releases/download/{VERSION}-stable/"
         f"Godot_v{VERSION}-stable_export_templates.tpz"
     )
-    print(f"Reading Godot {VERSION} archive directory…", flush=True)
+    print(f"Reading Godot {VERSION} archive directory...", flush=True)
     with zipfile.ZipFile(RemoteZip(url)) as archive:
         for name in missing:
             info = archive.getinfo(f"templates/{name}")
-            print(f"Downloading {name} ({info.compress_size / 1048576:.1f} MiB)…", flush=True)
-            data = archive.read(info)  # ZipFile verifies the entry's CRC.
+            print(f"Downloading {name} ({info.compress_size / 1048576:.1f} MiB)...", flush=True)
+            data = archive.read(info)
             temporary = target / (name + ".tmp")
             temporary.write_bytes(data)
-            if not zipfile.is_zipfile(temporary):
-                raise RuntimeError(f"{name} is not a valid ZIP template")
-            temporary.replace(target / name)
-            print(f"Saved {target / name}", flush=True)
+            destination = target / name
+            temporary.replace(destination)
+            if not template_ready(destination):
+                destination.unlink(missing_ok=True)
+                raise RuntimeError(f"Downloaded template is invalid: {name}")
+            print(f"Saved {destination}", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--platform",
+        action="append",
+        choices=[*TEMPLATE_NAMES, "all"],
+        help="template platform; repeat as needed (default: web)",
+    )
+    args = parser.parse_args()
+    selected = set(args.platform or ["web"])
+    if "all" in selected:
+        selected = set(TEMPLATE_NAMES)
+    ensure_templates(selected)
 
 
 if __name__ == "__main__":

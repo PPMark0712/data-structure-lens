@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 import zipfile
 
-from tools.fetch_web_templates import template_ready
+from tools.fetch_templates import template_ready
 
 
 class TemplateCacheTests(unittest.TestCase):
@@ -40,6 +40,33 @@ class TemplateCacheTests(unittest.TestCase):
             damaged[payload] ^= 0xFF
             template.write_bytes(damaged)
             self.assertFalse(template_ready(template))
+
+    def test_accepts_desktop_templates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            windows = directory / "windows_release_x86_64.exe"
+            windows.write_bytes(b"MZ" + b"\0" * (1024 * 1024))
+            self.assertTrue(template_ready(windows))
+
+            macos = directory / "macos.zip"
+            with zipfile.ZipFile(macos, "w") as archive:
+                archive.writestr(
+                    "macos_template.app/Contents/MacOS/godot_macos_release.universal",
+                    b"binary",
+                )
+            self.assertTrue(template_ready(macos))
+
+    def test_rejects_invalid_desktop_templates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            windows = directory / "windows_release_x86_64.exe"
+            windows.write_bytes(b"not a PE file")
+            self.assertFalse(template_ready(windows))
+
+            macos = directory / "macos.zip"
+            with zipfile.ZipFile(macos, "w") as archive:
+                archive.writestr("unrelated.txt", b"not a macOS template")
+            self.assertFalse(template_ready(macos))
 
 
 if __name__ == "__main__":

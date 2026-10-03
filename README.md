@@ -1,10 +1,33 @@
 # 数据结构实验室
 
-基于 **Godot 4.7.2 / GDScript** 的数据结构教学动画。30 个实验均可交互操作（堆排序合并至二叉堆）；算法执行产生独立快照，支持播放、暂停、逐步观察和撤销。米黄背景、黑色轮廓，适合电脑宽屏使用。
+[在线体验](https://ppmark0712.github.io/data-structure-lens/) · [下载 Windows / macOS 版本](https://github.com/PPMark0712/data-structure-lens/releases)
+
+数据结构实验室是一个基于 **Godot 4.7.2 / GDScript** 的交互式算法可视化项目。它包含 32 个数据结构实验，可逐帧观察查找、更新、旋转、路径压缩、持久化等过程，并支持暂停、单步、调速、回放和操作级撤销。项目完全在本地运行，不上传输入数据。
 
 原始需求见 [plan.md](plan.md)。其中「ACL 树」按 AVL 树实现，「动态树」采用 Link-Cut Tree。
 
-## 启动
+## 直接使用
+
+### GitHub 网页版
+
+进入 [GitHub 仓库](https://github.com/PPMark0712/data-structure-lens) 后，点击 README 顶部的「在线体验」，或直接打开：
+
+**https://ppmark0712.github.io/data-structure-lens/**
+
+页面首次打开需要下载约 45 MB 的 Godot WebAssembly 运行时和中文字库。建议使用支持 WebAssembly / WebGL 2 的现代桌面浏览器；不需要安装 Godot，也不需要登录。
+
+如果链接显示 404，说明仓库尚未启用 GitHub Pages。仓库所有者需按下文「GitHub Pages」中的步骤完成一次配置。
+
+### Windows / macOS
+
+打开 [GitHub Releases](https://github.com/PPMark0712/data-structure-lens/releases)，在最新版本的 Assets 中下载对应文件：
+
+- Windows：`DataStructureLab-Windows-x86_64.zip`，解压后运行 `DataStructureLab.exe`；`.exe` 与 `.pck` 必须保留在同一目录。
+- macOS：`DataStructureLab-macOS-universal.zip`，解压后运行「数据结构实验室.app」，同时支持 Apple Silicon 与 Intel Mac。
+
+桌面包目前未购买开发者证书签名。Windows SmartScreen 可能显示未知发布者；macOS 首次打开时可能需要右键应用选择「打开」，或在「系统设置 → 隐私与安全性」中允许。
+
+## 本地运行
 
 需要 Godot **4.7.2 标准版**，不需要 .NET。下载：[Godot 官方发布页](https://github.com/godotengine/godot/releases/tag/4.7.2-stable)。
 
@@ -16,20 +39,49 @@ python3 tools/project.py run
 
 脚本会寻找 `.tools/godot`、PATH 中的 `godot` / `godot4` 和 macOS 应用。可通过 `GODOT` 环境变量指定可执行文件。
 
-### 在网页端打开
+### 本地网页预览
 
 ```sh
 python3 tools/project.py export
 python3 tools/project.py serve
 ```
 
-第一条命令生成 Web 版本，第二条命令启动本地 HTTP 服务。随后用浏览器打开 **http://127.0.0.1:8060/**。已经导出过时可以只运行 `serve`；修改代码后需重新执行 `export`。
+第一条命令只生成 Web 版本，第二条命令只托管 `build/web/`。随后用浏览器打开 **http://127.0.0.1:8060/**。已经导出过时可以只运行 `serve`；修改代码后需重新执行 `export`。
 
 端口占用时使用 `python3 tools/project.py serve --port 8061`。如需让同一局域网内的其他设备访问，使用 `python3 tools/project.py serve --bind 0.0.0.0`，再通过这台电脑的局域网 IP 和端口 `8060` 打开。
 
-首次导出自动获取官方单线程 Web release 模板，只下载所需 ZIP 条目，无需下载整个约 1.2 GB 的模板包。模板保存在 `.tools/templates/`。导出目录为 `build/web/`；HTML、JS、WASM、PCK 等文件必须一起部署，不能只复制 HTML。不要通过 `file://` 打开。
+首次导出自动获取官方单线程 Web release 模板，只下载所需条目，无需下载整个约 1.2 GB 的模板包。模板保存在 `.tools/templates/`。导出目录为 `build/web/`；HTML、JS、WASM、PCK 等文件必须一起部署，不能只复制 HTML。不要通过 `file://` 打开。
 
 支持 WebAssembly / WebGL 2 的现代桌面浏览器；使用 Compatibility 渲染与单线程模板，无需 SharedArrayBuffer 或 COOP/COEP 响应头。首屏需下载 Godot 运行时与中文字库，未压缩产物约 45 MB。
+
+## 发布打包
+
+在项目根目录执行：
+
+```sh
+python3 tools/project.py package
+```
+
+该命令会按顺序导出 Web、Windows x86-64 和 macOS universal。首次执行时按需下载约 160 MB 的官方桌面导出模板，不会下载完整模板包。
+
+| 产物 | 路径 | 用途 |
+| --- | --- | --- |
+| Web 静态文件 | `build/web/` | GitHub Pages 或本地 Web 服务 |
+| Windows ZIP | `build/releases/DataStructureLab-Windows-x86_64.zip` | GitHub Release |
+| macOS ZIP | `build/releases/DataStructureLab-macOS-universal.zip` | GitHub Release |
+
+`python3 tools/project.py export` 始终只导出 Web；`serve` 始终只公开 `build/web/`。Windows/macOS 文件只写入 `build/windows/` 和 `build/releases/`，不会混入网页目录或 Pages 部署产物。
+
+### 自动发布 GitHub Release
+
+仓库的 [Release workflow](.github/workflows/release.yml) 会在推送 `v*` 标签时运行全部测试、构建三个平台，并自动创建 Release、生成发布说明和上传两个桌面 ZIP：
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Release Assets 仅包含 Windows 和 macOS ZIP。Web 构建不会作为下载包上传，也不会混入网页目录；网页版仍由独立的 Pages workflow 从 `build/web/` 部署。创建标签前应先将对应提交推送到 `main` / `master`，以便网页和桌面版指向同一版本。
 
 ## 如何操作
 
@@ -46,10 +98,11 @@ python3 tools/project.py serve
 | 类别 | 实验 | 主要操作与可见过程 |
 | --- | --- | --- |
 | 数组 | 静态数组、动态数组 | 构建、插删改查；插入逐个右移；扩容时旧数组上移、下方申请两倍内存、逐个向下复制并释放旧块 |
-| 链表 | 单向链表、双向链表 | 按位置插删改查；位置 1 在 HEAD 前插入，n+1 为尾插；真实 next / prev 连接 |
+| 链表 | 单向链表、双向链表 | 均支持查询第 k 个及倒数第 k 个且不提供改值；单链表仅头插／尾插，删除遍历到前驱，区间翻转时在下方建立反向链并用 pre 接回；双链表支持按位置插入；真实 next / prev 连接 |
 | 栈与队列 | 栈、队列 | 入栈 / 入队、弹出、读取 |
 | 单调结构 | 单调栈、单调队列 | 扫描约 10 项数组，求左侧最近严格更大值的下标／固定窗口最大值下标；横向展示候选下标和答案 |
 | 哈希表 | 线性探测、二次探测、链地址法 | 插入、删除、查找、清空；探测、墓碑与冲突链 |
+| 并查集 | 普通、带权、可撤销并查集 | 可切换路径压缩与 rank／size 合并；维护节点差值；按历史栈撤销合并 |
 | 树状数组 | 一维、二维 | 单点增加、区间 / 矩形求和；lowbit 访问路径 |
 | 堆 | 二叉堆、二项堆、斐波那契堆 | 二叉堆含升序堆排序：原数组逐个填入完全二叉树，再调整堆序；按度合并、提取最小值、减键、删除、级联切断 |
 | ST 表 | 静态 RMQ | 16 项预处理、区间最小值；长矩形表示实际覆盖区间，各层错行展示 |
@@ -57,7 +110,6 @@ python3 tools/project.py serve
 | Trie | 字符串、01、可持久化 01 | 词频、前缀计数、插入删除、最大异或、历史版本分支 |
 | 平衡树 | AVL、Treap、Splay、红黑树 | 构建、插删查；单双旋、伸展、染色及红黑删除修复 |
 | 动态树 | Link-Cut Tree | link、cut、路径和、改权、access、makeroot、添加节点；同时显示实际森林与辅助 Splay |
-| 集合结构 | 并查集 | 递归查找、路径压缩、合并与连通判断；逐帧显示父指针改写，不使用按秩或按大小合并 |
 
 ### 演示范围
 
@@ -73,7 +125,7 @@ python3 tools/project.py serve
 - 字符串 Trie 接受 1–8 个小写英文字母；01 Trie 使用 8 位整数 `[0,255]`。每个 Trie 版本最多 16 个键，重复键按次数存储。
 - Trie 节点内部显示编号和「经过计数/终止计数」，字符仅标在边上；可持久化 Trie 的版本号标在根节点上方。
 - 平衡树最多 15 个不同键；Treap 使用固定随机种子，便于复现。LCT 最多 12 个节点，只允许森林操作。
-- 并查集支持 1–12 个元素，使用 `fa[find(a)] = find(b)` 合并；唯一启发式为递归 `find` 的路径压缩，不维护 rank 或 size。
+- 三种并查集均支持 1–12 个元素。普通并查集可独立开关路径压缩，并在不开启合并启发式、按 rank、按 size 之间选择。带权并查集约定 `weight[x] = value[x] - value[fa[x]]`，可添加和查询 `value[b] - value[a]`。可撤销并查集固定按 size 合并且不压缩路径，用历史栈逐次恢复 parent 与 size。
 - 大图可缩放平移；当前界面针对电脑，未提供手机竖屏布局、账户、存档或课程评分。
 
 ## 测试
@@ -84,11 +136,11 @@ python3 tools/project.py test
 
 无需第三方测试插件，包含：
 
-- `tests/test_models.gd`：全部 30 个模块的默认操作、轨迹有效性、随机差分与结构不变量。
+- `tests/test_models.gd`：全部 32 个模块的默认操作、轨迹有效性、随机差分与结构不变量。
 - `tests/test_advanced.gd`：堆、有序树、Trie、可持久化版本、LCT 的随机交错与边界情况；对照独立多重集、集合、暴力异或和 BFS。
-- `tests/test_teaching.gd`：数组逐帧左右移动、扩容内存迁移、链表头尾插、栈容器与进出动画、哈希横排及 0-based 槽位、并查集递归回溯与父指针压缩、单调算法暴力对照、ST 覆盖与交错行、线段树区间记录、逐个入堆与排序续接、Trie 标签、Splay 四种双旋完整树形及全部操作备注。
+- `tests/test_teaching.gd`：数组逐帧左右移动、扩容内存迁移、链表头尾插与正／倒数查询、下排区间翻转及 pre 重连、栈容器与进出动画、哈希横排及 0-based 槽位、三种并查集的压缩／权值／撤销过程、单调算法暴力对照、ST 覆盖与交错行、线段树区间记录、逐个入堆与排序续接、Trie 标签、Splay 四种双旋完整树形及全部操作备注。
 - `tests/test_interactions.gd`：真实主场景的参数输入、执行、撤销、错误回滚、节点选择、暂停 Tween。
-- `tests/test_tools.py`：Web 导出模板缓存的完整性判断。
+- `tests/test_tools.py`：Web、Windows、macOS 导出模板缓存的完整性判断。
 
 详细结果见 [验证记录](docs/validation.md)，开发约定见 [架构说明](docs/architecture.md)。日志保存在 `.tools/`。
 
@@ -107,20 +159,21 @@ PR 只执行测试与构建，不发布。没有设置远端仓库时，本地�
 
 ```text
 project.godot                   Godot 项目入口与窗口/渲染配置
-export_presets.cfg              单线程 Web 导出配置
+export_presets.cfg              Web、Windows x86-64、macOS universal 导出配置
 scenes/main.tscn                主场景
 scripts/main.gd                 菜单、参数表单、播放时间轴与撤销
-scripts/core/catalog.gd         30 个实验的分类与模型注册表
+scripts/core/catalog.gd         32 个实验的分类与模型注册表
 scripts/core/model.gd           统一模型、操作字段和快照协议
 scripts/core/operation_notes.gd 各实验的操作说明
 scripts/models/                 数据结构算法与视图快照
 scripts/ui/canvas.gd            节点、连线、缩放与快照插值
 tests/                          模型差分、教学动画和场景交互测试
-tools/project.py                桌面运行、测试、Web 导出与本地服务入口
-tools/fetch_web_templates.py    Godot Web 模板下载与缓存校验
+tools/project.py                运行、测试、Web 导出、桌面打包与本地服务入口
+tools/fetch_templates.py        Godot 三平台模板的按需下载与缓存校验
 docs/                           架构约定和发布前验证记录
 assets/                         中文字体及字体许可证
 .github/workflows/pages.yml     GitHub Pages 测试、构建与部署
+.github/workflows/release.yml   v* 标签触发的桌面 ZIP 自动发布
 ```
 
 Noto Sans SC 字体按 [SIL Open Font License](assets/OFL.txt) 分发；使用静态 400 字重实例。Godot 的许可证见其官方发布页面。
